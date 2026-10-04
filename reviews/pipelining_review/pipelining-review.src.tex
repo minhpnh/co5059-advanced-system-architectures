@@ -1,0 +1,584 @@
+% !TeX program = xelatex
+\documentclass[11pt]{article}
+\newcommand{\notesdir}{../../lecture-notes}
+\input{../../lecture-notes/preamble}
+
+\begin{document}
+\sloppy
+\makecover{Quiz Review: Pipelining}{Lecture 3 -- pipeline timing, speedup,
+CPI with stalls, structural/data/control hazards, forwarding, branch
+schemes. A cheat sheet, the slide exercises with solutions, exam-style
+questions, and extra practice problems -- with solutions at the end.}
+
+% ============================================================================
+\section{Cheat Sheet}
+
+\subsection{Timing}
+\begin{theorem}[Cycles and time]
+For $n$ instructions on a $k$-stage pipeline with $s$ total stall cycles:
+\[
+  \text{Cycles} = k + (n-1) + s, \qquad
+  \text{Time} = \text{Cycles}\times t_{clk},
+\]
+\[
+  t_{clk} = \max_i(\text{stage delay}_i) + \text{latch overhead},
+  \qquad
+  \text{Latency of one instruction} = k\cdot t_{clk}.
+\]
+\end{theorem}
+
+\begin{theorem}[Speedup]
+Ideal (balanced stages, $p$ = unpipelined time per task):
+\[
+  \text{Speedup} = \frac{n\,p}{\frac{p}{k}(n-1)+p} = \frac{nk}{n+k-1}
+  \;\xrightarrow{n\to\infty}\; k.
+\]
+With stalls:
+\begin{gather*}
+  \CPI_{pipe} = 1 + \text{stall cycles per instruction}\\
+  \text{Speedup} = \frac{\CPI_{unpipe}}{\CPI_{pipe}}\times
+  \frac{t_{clk,unpipe}}{t_{clk,pipe}}
+  = \frac{\text{Depth}}{1+\text{stall CPI}} \ \ (\text{balanced stages})
+\end{gather*}
+\end{theorem}
+
+\begin{note}
+Pipelining improves \textbf{throughput}, not \textbf{latency}. Ideal
+$\CPI=1$ because one instruction \emph{completes} per cycle once the
+pipeline is full: $\CPI = (k+n-1)/n \to 1$.
+\end{note}
+
+\subsection{The 5-stage MIPS pipeline}
+IF (instruction memory) -- ID (decode, read registers) -- EX (ALU / address)
+-- MEM (data memory) -- WB (write register). Registers are
+\textbf{written in the first half} and \textbf{read in the second half} of a
+cycle, so an instruction can read in ID a value written by WB in the same
+cycle.
+
+\subsection{Data hazards: how many stalls?}
+Let $d$ be the distance from producer to consumer ($d=1$: the very next
+instruction).
+\begin{center}
+\begin{tabular}{@{}p{4.6cm}lp{6.2cm}@{}}
+\toprule
+Situation & Stalls & Why \\
+\midrule
+No forwarding, any producer & $\max(0,\,3-d)$ & consumer's ID must not precede producer's WB \\
+Forwarding, ALU $\to$ ALU & 0 & EX/MEM $\to$ EX ($d=1$), MEM/WB $\to$ EX ($d=2$) \\
+Forwarding, load $\to$ use ($d=1$) & 1 & data ready only at end of MEM \\
+Forwarding, load $\to$ use ($d\ge2$) & 0 & MEM/WB $\to$ EX \\
+Forwarding, load $\to$ store data & 0 & MEM/WB $\to$ store input \\
+\bottomrule
+\end{tabular}
+\end{center}
+Only \textbf{RAW} causes hazards in the in-order 5-stage pipeline; WAR and
+WAW cannot happen because reads (ID) are early and writes (WB) are late and
+in order.
+
+\subsection{Drawing a pipeline diagram}
+\begin{enumerate}[leftmargin=*]
+  \item One row per instruction, one column per cycle; each row starts one
+  cycle after the previous row's IF.
+  \item When an instruction stalls, write \texttt{stall} after its ID (it
+  waits in ID); the instruction behind it waits in IF, and everything behind
+  shifts right.
+  \item Total cycles $=$ cycle of the last WB.
+\end{enumerate}
+In wide diagrams below, \texttt{stl} abbreviates \texttt{stall}.
+
+\subsection{Control hazards}
+\begin{prop}[Branch cost]
+\begin{gather*}
+  \text{Branch penalty} = (\text{stage where branch is resolved}) - 1\\
+  \CPI = 1 + f_{branch}\times(\text{fraction penalized})\times\text{penalty}
+\end{gather*}
+Resolved in MEM $\Rightarrow$ 3 cycles; moved to ID (zero test + extra adder)
+$\Rightarrow$ 1 cycle.
+\end{prop}
+\begin{center}
+\small
+\begin{tabular}{@{}lp{9.6cm}@{}}
+\toprule
+Scheme & Cost \\
+\midrule
+Stall (flush) & every branch pays the full penalty \\
+Predict not taken & only \emph{taken} branches pay (fetch PC$+4$, squash on taken); $\approx47\%$ of MIPS branches are not taken \\
+Predict taken & untaken branches pay; in the 5-stage MIPS still 1 cycle because the target is not known earlier \\
+Delayed branch & the instruction in the delay slot always executes; cost $=$ wasted (unfilled/useless) slots \\
+\bottomrule
+\end{tabular}
+\end{center}
+Delay-slot filling: (A) from before the branch -- best, always useful, the
+branch must not depend on it; (B) from the target -- useful when taken, may
+need copying, must be safe if not taken; (C) from the fall-through -- useful
+when not taken, must be safe if taken. Compilers fill $\approx60\%$ of slots,
+$\approx80\%$ of those usefully $\Rightarrow\approx50\%$ useful.
+
+\subsection{Structural hazards}
+Two instructions need the same resource in the same cycle (e.g.\ one memory
+port for instructions and data). Fix: duplicate the resource (split I/D
+memory) or stall. Sometimes accepted when the hazard is rare and avoiding it
+is costly.
+
+% ============================================================================
+\section{Exercises from the Slides (with Solutions)}
+
+\begin{exercise}[Laundry]
+Wash 30~min, dry 40~min, fold 20~min; 4 loads. Sequential vs.\ pipelined
+time and speedup?
+\end{exercise}
+\begin{solution}
+Sequential: $4\times90 = 360$~min $=6$~h. Pipelined: the 40-min dryer sets
+the pace: $30 + 4\times40 + 20 = 210$~min $=3.5$~h. Speedup $=6/3.5 =
+1.7$ (not 3), because stages are unbalanced and the pipeline must fill and
+drain.
+\end{solution}
+
+\begin{exercise}[Single-cycle vs.\ pipelined]
+Stage times IF 2, Reg 1, ALU 2, Mem 2, WB 1~ns. Compare 3 loads, then 1003
+loads, on a single-cycle (8~ns) and a pipelined (2~ns) machine.
+\end{exercise}
+\begin{solution}
+3 loads: single-cycle $3\times8 = 24$~ns; pipelined $(5+2)\times2 = 14$~ns;
+speedup $1.7$.
+1003 loads: single-cycle $1003\times8 = 8024$~ns; pipelined
+$(5+1002)\times2 = 2014$~ns; speedup $3.98 \approx 8/2 = 4$. The speedup
+approaches the ratio of clock periods (not 5, because the stages are
+unbalanced: the 1-ns stages still take a 2-ns cycle).
+\end{solution}
+
+\begin{exercise}[Pipelining a multi-cycle CPU]
+Unpipelined: 1~ns clock, ALU/branch 4 cycles, memory 5 cycles; mix 40\%
+ALU, 20\% branch, 40\% memory. Pipelining adds 0.2~ns to the clock.
+Speedup?
+\end{exercise}
+\begin{solution}
+Unpipelined average $=1\times(0.6\times4 + 0.4\times5) = 4.4$~ns.
+Pipelined average $= 1.2$~ns (ideal $\CPI=1$). Speedup $=4.4/1.2 = 3.7$.
+\end{solution}
+
+\begin{exercise}[Structural hazard]
+Loads/stores are 40\% of instructions; the machine with one memory port
+stalls 1 cycle per data access but has a $1.05\times$ faster clock. Which is
+better?
+\end{exercise}
+\begin{solution}
+Hazard machine: $(1+0.4\times1)\times t/1.05 = 1.33\,t$ versus $1.0\,t$ for
+the ideal machine, so the machine without the hazard is $1.33\times$
+faster.
+\end{solution}
+
+\begin{exercise}[RAW hazard on R1]
+\texttt{add r1,r2,r3; sub r4,r1,r3; and r6,r1,r7; or r8,r1,r9;
+xor r10,r1,r11}. Stalls and total cycles without and with forwarding?
+\end{exercise}
+\begin{solution}
+Without forwarding \texttt{sub} ($d=1$) needs 2 stalls; after that every
+later reader is far enough behind:
+@@GRID:raw_nofwd@@
+11 cycles. With forwarding (EX/MEM $\to$ EX to \texttt{sub}, MEM/WB $\to$ EX
+to \texttt{and}, register file for \texttt{or}/\texttt{xor}): 0 stalls,
+$5+4 = 9$ cycles.
+\end{solution}
+
+\begin{exercise}[Load-use hazard]
+\texttt{lw r1,0(r2); sub r4,r1,r6; and r6,r1,r7; or r8,r1,r9} with
+forwarding.
+\end{exercise}
+\begin{solution}
+The loaded value exists only at the end of MEM (cycle 4) but \texttt{sub}
+needs it at the start of its EX (cycle 4): 1 stall is unavoidable.
+@@GRID:loaduse@@
+9 cycles ($5+3+1$).
+\end{solution}
+
+\begin{exercise}[Compiler scheduling]
+\texttt{a=b+c; d=e-f;} compiled as \texttt{lw Rb; lw Rc; add Ra; sw Ra;
+lw Re; lw Rf; sub Rd; sw Rd} (forwarding, 1-cycle load delay). Stalls
+before and after scheduling?
+\end{exercise}
+\begin{solution}
+Original: \texttt{add} right after \texttt{lw Rc} and \texttt{sub} right
+after \texttt{lw Rf} $\Rightarrow$ 2 stalls, $5+7+2 = 14$ cycles.
+Scheduled \texttt{lw Rb; lw Rc; lw Re; add Ra; lw Rf; sw Ra; sub Rd; sw Rd}:
+no load is immediately followed by its use $\Rightarrow$ 0 stalls, 12
+cycles.
+\end{solution}
+
+\begin{exercise}[Branch stall impact]
+30\% of instructions are branches with a 3-cycle stall. New CPI?
+\end{exercise}
+\begin{solution}
+$\CPI = 1 + 0.30\times3 = 1.9$ -- almost twice the ideal. With the branch
+resolved in ID (1 cycle): $1+0.3 = 1.3$.
+\end{solution}
+
+\begin{exercise}[Comparing branch schemes]
+4\% unconditional, 6\% conditional untaken, 10\% conditional taken;
+pipeline depth 5. Find CPI and speedups for stall, predict not taken,
+predict taken, delayed branch (penalty 0.5).
+\end{exercise}
+\begin{solution}
+\begin{tabular}[t]{@{}lcccc@{}}
+Scheme & CPI & vs.\ unpipelined & vs.\ stall \\
+\hline
+Stall: $1+0.20\times3$ & 1.60 & $5/1.6=3.1$ & 1.00 \\
+Not taken: $1+0.04\times1+0.10\times3$ & 1.34 & 3.7 & 1.19 \\
+Taken: $1+0.14\times1+0.06\times2$ & 1.26 & 4.0 & 1.27 \\
+Delayed: $1+0.20\times0.5$ & 1.10 & 4.5 & 1.45 \\
+\end{tabular}
+
+(The slide lists 1.29 for predict taken, which is the ratio of the rounded
+speedups $4.0/3.1$; the exact value is $1.6/1.26 = 1.27$.)
+\end{solution}
+
+\begin{exercise}[CPI of a realistic mix]
+Loads 30\% (25\% followed immediately by a use), branches 20\% (45\%
+taken); forwarding, branch resolved in ID, predict not taken.
+\end{exercise}
+\begin{solution}
+$\CPI = 1 + 0.3\times0.25\times1 + 0.2\times0.45\times1 = 1.165$.
+\end{solution}
+
+\begin{exercise}[Hazards, NOPs and forwarding]\label{e:lecture}
+\leavevmode
+\begin{lstlisting}
+(1) lw  $1, 40($6)
+(2) add $6, $2, $2
+(3) sw  $6, 50($1)
+(4) add $4, $5, $6
+(5) lw  $6, 10($4)
+\end{lstlisting}
+(A) Find all data dependencies. (B) Without forwarding, which cause hazards?
+(C) Insert NOPs so the code runs correctly without forwarding. (D) How many
+cycles does (C) take? (E) With full forwarding, how many cycles, and which
+forwarding paths are used?
+\end{exercise}
+\begin{solution}
+\textbf{(A)} RAW: (1)$\to$(3) on \texttt{\$1}; (2)$\to$(3) on \texttt{\$6};
+(2)$\to$(4) on \texttt{\$6}; (4)$\to$(5) on \texttt{\$4}.
+WAR: (1)$\to$(2), (3)$\to$(5), (4)$\to$(5) on \texttt{\$6}.
+WAW: (2)$\to$(5) on \texttt{\$6}.
+
+\textbf{(B)} Only RAW with $d\le2$: (1)$\to$(3) ($d=2$), (2)$\to$(3)
+($d=1$), (2)$\to$(4) ($d=2$), (4)$\to$(5) ($d=1$). WAR/WAW are not hazards
+here.
+
+\textbf{(C)} Each consumer must be at least 3 slots after its producer:
+\begin{lstlisting}
+lw  $1, 40($6)
+add $6, $2, $2
+nop
+nop
+sw  $6, 50($1)
+add $4, $5, $6
+nop
+nop
+lw  $6, 10($4)
+\end{lstlisting}
+\textbf{(D)} 9 instructions $\Rightarrow 5 + 8 = 13$ cycles:
+@@GRID:lec_nofwd@@
+
+\textbf{(E)} No stalls are needed (the only load, (1), is used two
+instructions later), so $5+4 = 9$ cycles:
+@@GRID:lec_fwd@@
+Forwarding paths: cycle 5, MEM/WB $\to$ EX gives \texttt{\$1} (from (1)) and
+EX/MEM $\to$ EX gives \texttt{\$6} (from (2)) to the \texttt{sw}; cycle 6,
+MEM/WB $\to$ EX gives \texttt{\$6} (from (2)) to (4); cycle 7, EX/MEM $\to$
+EX gives \texttt{\$4} (from (4)) to (5).
+\end{solution}
+
+% ============================================================================
+\section{Exam-Style Questions}
+
+Multi-part questions in the style of the in-class exercise. Solutions are in
+the last section.
+
+\begin{exercise}[Pipeline timing]\label{x:timing}
+A 5-stage pipeline has stage latencies IF 250, ID 200, EX 300, MEM 350,
+WB 150~ps. Each pipeline register adds 20~ps.
+\begin{enumerate}[label=(\alph*),leftmargin=*]
+  \item What is the clock period of the non-pipelined (single-cycle) version?
+  \item What is the clock period of the pipelined version?
+  \item What is the latency of one instruction in the pipeline?
+  \item How long do $10^6$ instructions take on each version (no stalls)?
+  What is the speedup?
+  \item What is the pipelined throughput in instructions per second?
+  \item MEM is split into two stages of 175~ps each. Find the new clock period
+  and the speedup over the 5-stage pipeline for $10^6$ instructions.
+\end{enumerate}
+\end{exercise}
+
+\begin{exercise}[Hazards and forwarding]\label{x:hazards}
+\leavevmode
+\begin{lstlisting}
+(1) lw  $s2, 0($s1)
+(2) add $s3, $s2, $s4
+(3) sub $s5, $s3, $s2
+(4) sw  $s5, 4($s1)
+(5) add $t0, $s6, $s7
+\end{lstlisting}
+\begin{enumerate}[label=(\alph*),leftmargin=*]
+  \item List all RAW dependencies, with their distance.
+  \item Which of them cause hazards without forwarding?
+  \item Insert NOPs so the code runs correctly without forwarding. How many
+  cycles does it take?
+  \item With full forwarding, draw the pipeline diagram. How many stalls and
+  cycles?
+  \item Name the forwarding path used for every dependency in (d).
+  \item Reorder the code (same result) so it runs with no stalls when
+  forwarding is available. How many cycles now?
+\end{enumerate}
+\end{exercise}
+
+\begin{exercise}[Branches and CPI]\label{x:branches}
+A program's mix: 25\% loads, 10\% stores, 15\% branches (60\% taken), 50\%
+ALU. 40\% of loads are immediately followed by an instruction that uses the
+loaded value. The pipeline has full forwarding.
+\begin{enumerate}[label=(\alph*),leftmargin=*]
+  \item Branches are resolved in MEM and the pipeline stalls on every branch.
+  CPI?
+  \item Predict not taken, branch resolved in MEM. CPI?
+  \item Predict not taken, branch resolved in ID. CPI?
+  \item One delay slot (branch resolved in ID); the compiler fills 70\% of
+  slots with useful instructions. CPI?
+  \item With a 1~GHz clock and $10^9$ instructions, find the execution time
+  for (a) and (c) and the speedup.
+  \item An unpipelined multi-cycle version runs at the same clock with
+  $\CPI = 4.6$. What speedup does design (c) give over it?
+\end{enumerate}
+\end{exercise}
+
+% ============================================================================
+\section{Practice Problems}
+
+\begin{exercise}\label{p:clock}
+Stage delays: IF 200, ID 150, EX 250, MEM 300, WB 150~ps; latch overhead
+20~ps. (a) Single-cycle clock? (b) Pipelined clock? (c) Latency of one
+instruction when pipelined? (d) Time for 1000 instructions on each, and the
+speedup? (e) MEM is split into two 150-ps stages. New clock and speedup over
+(d) for 1000 instructions?
+\end{exercise}
+
+\begin{exercise}\label{p:ideal}
+For a 5-stage pipeline, compute the ideal speedup for $n=10$, $n=100$ and
+$n\to\infty$ instructions.
+\end{exercise}
+
+\begin{exercise}\label{p:stalls}
+\leavevmode
+\begin{lstlisting}
+(1) add $t0, $t1, $t2
+(2) lw  $t3, 0($t0)
+(3) sub $t4, $t3, $t5
+(4) sw  $t4, 4($t0)
+(5) or  $t6, $t0, $t4
+\end{lstlisting}
+List the RAW dependencies. Draw the diagram and count cycles (a) without
+forwarding, (b) with full forwarding.
+\end{exercise}
+
+\begin{exercise}\label{p:sched}
+With forwarding, how many cycles does this take? Reorder it (without changing
+the result) to remove all stalls.
+\begin{lstlisting}
+lw  $t0, 0($a0)
+add $t1, $t0, $t2
+lw  $t3, 4($a0)
+add $t4, $t3, $t2
+sw  $t1, 0($a1)
+\end{lstlisting}
+\end{exercise}
+
+\begin{exercise}\label{p:branch}
+25\% of instructions are branches and 60\% of them are taken. Find the CPI
+for: (a) stall, branch resolved in MEM; (b) predict not taken, resolved in
+MEM; (c) predict not taken, resolved in ID; (d) one delay slot that is
+usefully filled 50\% of the time.
+\end{exercise}
+
+\begin{exercise}\label{p:mix}
+Loads 30\% (40\% of them followed immediately by a use), branches 15\% (50\%
+taken, 1-cycle penalty on taken), full forwarding. Find the CPI. An
+unpipelined version has CPI 4.5 with a 1~ns clock; the pipelined clock is
+1.1~ns. Speedup?
+\end{exercise}
+
+\begin{exercise}\label{p:struct}
+35\% of instructions access data memory. With a single memory port each
+access causes a 1-cycle stall. A dual-port design avoids this but its clock
+period is 10\% longer. Which is faster and by how much?
+\end{exercise}
+
+\begin{exercise}\label{p:classify}
+Classify every dependency (RAW/WAR/WAW). Which ones are hazards in the
+5-stage MIPS pipeline?
+\begin{lstlisting}
+(1) add $1, $2, $3
+(2) sub $4, $1, $5
+(3) and $1, $6, $7
+(4) or  $8, $1, $4
+\end{lstlisting}
+\end{exercise}
+
+\begin{exercise}\label{p:slot}
+Can \texttt{add \$s1,\$s2,\$s3} be moved into the delay slot of the
+following \texttt{beq \$t0,\$t1,L}? What if it were
+\texttt{add \$t0,\$s2,\$s3} instead?
+\end{exercise}
+
+\begin{exercise}\label{p:draw}
+Draw the diagram with full forwarding, mark the stall(s), and name the
+forwarding path for every dependency:
+\begin{lstlisting}
+(1) lw  $2, 20($1)
+(2) and $4, $2, $5
+(3) or  $8, $2, $6
+(4) add $9, $4, $2
+(5) slt $1, $6, $7
+\end{lstlisting}
+\end{exercise}
+
+% ============================================================================
+\section{Solutions to the Practice Problems}
+
+\begin{solution}[\ref{p:clock}]
+(a) $200+150+250+300+150 = 1050$~ps.
+(b) $300+20 = 320$~ps (slowest stage plus latch).
+(c) $5\times320 = 1600$~ps -- longer than single-cycle; pipelining does not
+cut latency.
+(d) Single-cycle $1000\times1050 = 1{,}050{,}000$~ps; pipelined
+$(5+999)\times320 = 321{,}280$~ps; speedup $3.27$.
+(e) Slowest stage is now EX: $250+20=270$~ps; $(6+999)\times270 =
+271{,}350$~ps; speedup over (d) $=321{,}280/271{,}350 = 1.18$.
+\end{solution}
+
+\begin{solution}[\ref{p:ideal}]
+$nk/(n+k-1)$: $n=10$: $50/14 = 3.57$; $n=100$: $500/104 = 4.81$;
+$n\to\infty$: 5.
+\end{solution}
+
+\begin{solution}[\ref{p:stalls}]
+RAW: (1)$\to$(2), (1)$\to$(4), (1)$\to$(5) on \texttt{\$t0};
+(2)$\to$(3) on \texttt{\$t3}; (3)$\to$(4), (3)$\to$(5) on \texttt{\$t4}.
+
+(a) Without forwarding (each consumer $\ge3$ slots after its producer):
+@@GRID:p3_nofwd@@
+6 stalls, 15 cycles.
+
+(b) With forwarding only the load-use (2)$\to$(3) stalls:
+@@GRID:p3_fwd@@
+1 stall, 10 cycles.
+\end{solution}
+
+\begin{solution}[\ref{p:sched}]
+Two load-use stalls: $5+4+2 = 11$ cycles. Reordered:
+\begin{lstlisting}
+lw  $t0, 0($a0)
+lw  $t3, 4($a0)
+add $t1, $t0, $t2
+add $t4, $t3, $t2
+sw  $t1, 0($a1)
+\end{lstlisting}
+Every use is now 2 instructions after its load: 0 stalls, 9 cycles.
+\end{solution}
+
+\begin{solution}[\ref{p:branch}]
+(a) $1+0.25\times3 = 1.75$.
+(b) $1+0.25\times0.6\times3 = 1.45$.
+(c) $1+0.25\times0.6\times1 = 1.15$.
+(d) $1+0.25\times0.5 = 1.125$.
+\end{solution}
+
+\begin{solution}[\ref{p:mix}]
+$\CPI = 1+0.3\times0.4\times1+0.15\times0.5\times1 = 1+0.12+0.075 = 1.195$.
+Speedup $=(4.5\times1)/(1.195\times1.1) = 4.5/1.3145 = 3.42$.
+\end{solution}
+
+\begin{solution}[\ref{p:struct}]
+Single port: $1.35\times t$. Dual port: $1.0\times1.1t = 1.1t$. Dual port is
+faster by $1.35/1.1 = 1.23\times$.
+\end{solution}
+
+\begin{solution}[\ref{p:classify}]
+RAW: (1)$\to$(2) \texttt{\$1}; (2)$\to$(4) \texttt{\$4}; (3)$\to$(4)
+\texttt{\$1} (instruction 4 reads the \emph{new} \texttt{\$1} from (3), not
+from (1)). WAR: (2)$\to$(3) on \texttt{\$1}. WAW: (1)$\to$(3) on
+\texttt{\$1}. Only the RAW dependencies can be hazards in the in-order
+5-stage pipeline; with forwarding none of them stalls.
+\end{solution}
+
+\begin{solution}[\ref{p:slot}]
+Yes: the branch does not read \texttt{\$s1}, so it is an independent
+instruction from before the branch (strategy A, always useful). No for
+\texttt{add \$t0,\dots}: the branch depends on \texttt{\$t0}, so the slot
+must be filled from the target (B) or fall-through (C) path instead.
+\end{solution}
+
+\begin{solution}[\ref{p:draw}]
+@@GRID:p10@@
+(1)$\to$(2) \texttt{\$2}: load-use, 1 stall, then MEM/WB $\to$ EX in
+cycle 5. (1)$\to$(3) \texttt{\$2}: register file (written in the first half
+of cycle 5, read in the second half). (2)$\to$(4) \texttt{\$4}: MEM/WB $\to$
+EX in cycle 7. (1)$\to$(4) \texttt{\$2}: register file. (5) has no
+dependency. Total 10 cycles.
+\end{solution}
+
+% ============================================================================
+\section{Solutions to the Exam-Style Questions}
+
+\begin{solution}[\ref{x:timing}]
+\leavevmode
+\begin{enumerate}[label=(\alph*),leftmargin=*]
+  \item $250+200+300+350+150 = 1250$~ps.
+  \item Slowest stage $+$ overhead $= 350+20 = 370$~ps.
+  \item $5\times370 = 1850$~ps (longer than 1250~ps: latency gets worse).
+  \item Non-pipelined: $10^6\times1250\text{ ps} = 1.25$~ms. Pipelined:
+  $(5 + 10^6 - 1)\times370\text{ ps} \approx 0.370$~ms. Speedup $\approx
+  1250/370 = 3.38$ (well below 5 because the stages are unbalanced).
+  \item One instruction per cycle: $1/370\text{ ps} \approx 2.7\times10^9$
+  instructions/s.
+  \item The slowest stage is now EX: $300+20 = 320$~ps. Speedup $=
+  \dfrac{(10^6+4)\times370}{(10^6+5)\times320} \approx 1.156$.
+\end{enumerate}
+\end{solution}
+
+\begin{solution}[\ref{x:hazards}]
+\leavevmode
+\begin{enumerate}[label=(\alph*),leftmargin=*]
+  \item (1)$\to$(2) \texttt{\$s2} ($d=1$); (1)$\to$(3) \texttt{\$s2} ($d=2$);
+  (2)$\to$(3) \texttt{\$s3} ($d=1$); (3)$\to$(4) \texttt{\$s5} ($d=1$).
+  Instruction (5) is independent.
+  \item All four have $d\le2$, so all are hazards without forwarding.
+  \item Two NOPs after each of (1), (2), (3):
+  \texttt{lw; nop; nop; add; nop; nop; sub; nop; nop; sw; add} -- 11
+  instructions, $5+10 = 15$ cycles. (With an interlock instead of NOPs the
+  timing is the same:)
+@@GRID:x2_nofwd@@
+  \item Only the load-use (1)$\to$(2) stalls: 1 stall, 10 cycles.
+@@GRID:x2_fwd@@
+  \item (1)$\to$(2): MEM/WB $\to$ EX in cycle 5 (after the stall).
+  (1)$\to$(3): register file (written in the first half of cycle 5, read in
+  the second half). (2)$\to$(3): EX/MEM $\to$ EX in cycle 6. (3)$\to$(4):
+  EX/MEM $\to$ EX in cycle 7 (store data).
+  \item Move the independent (5) between the load and its use:
+  \texttt{lw; add \$t0; add \$s3; sub; sw}. The use of \texttt{\$s2} is now
+  2 instructions after the load, so there are no stalls: 9 cycles.
+@@GRID:x2_sched@@
+\end{enumerate}
+\end{solution}
+
+\begin{solution}[\ref{x:branches}]
+Load-use stalls per instruction $= 0.25\times0.4\times1 = 0.10$.
+\begin{enumerate}[label=(\alph*),leftmargin=*]
+  \item $1 + 0.10 + 0.15\times3 = 1.55$.
+  \item $1 + 0.10 + 0.15\times0.6\times3 = 1.37$.
+  \item $1 + 0.10 + 0.15\times0.6\times1 = 1.19$.
+  \item Wasted slots: $0.15\times0.3\times1 = 0.045$, so $\CPI = 1.145$.
+  \item $T_a = 10^9\times1.55\times1\text{ ns} = 1.55$~s; $T_c = 1.19$~s;
+  speedup $= 1.55/1.19 = 1.30$.
+  \item $4.6/1.19 = 3.87$.
+\end{enumerate}
+\end{solution}
+
+\end{document}

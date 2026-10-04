@@ -1,0 +1,305 @@
+% !TeX program = xelatex
+\documentclass[11pt]{article}
+\newcommand{\notesdir}{../../lecture-notes}
+\input{../../lecture-notes/preamble}
+
+\newcommand{\ex}[3]{\subsection*{Exercise #1 \normalfont\small(book p.~#2, PDF p.~#3)}%
+  \addcontentsline{toc}{subsection}{Exercise #1}}
+
+\begin{document}
+\sloppy
+\makecover{Textbook Exercises: Performance}{Hennessy \& Patterson,
+\emph{Computer Architecture: A Quantitative Approach}, 5th ed., Chapter~1
+case studies and exercises (1.1--1.18). A map of every exercise with its
+page and relevance to Lecture~1, worked solutions for the ones our lectures
+cover, and hints for the rest.}
+
+% ============================================================================
+\section{How to Use This File}
+
+\begin{itemize}[leftmargin=*]
+  \item The exercise text is \textbf{not} copied here -- open the book
+  (\texttt{references/Computer Architecture - A Quantitative Approach.pdf})
+  at the page given. ``Book p.'' is the printed page number; ``PDF p.'' is
+  the page in the PDF viewer.
+  \item Each worked solution starts with a one-line summary of what the
+  exercise asks, so you can check you are on the right problem.
+  \item Chapter~1 of the 5th edition has no plain CPI/clock-cycle
+  exercises; those are in Appendix~A (A.1--A.4, see the ISA file) and
+  Appendix~C (C.2, C.3, C.7, see the pipelining file).
+\end{itemize}
+
+\begin{note}
+\textbf{Yield formula.} The 5th edition's text uses
+$\text{Yield}=1/(1+D\cdot A)^N$ with $N\approx13.5$ for a 40~nm process, but
+that makes the 130/90~nm chips of Exercises 1.1--1.3 have almost zero yield.
+The answers below use the classic formula from our lecture,
+$\text{Yield}=(1+D\cdot A/4)^{-4}$, which is what these exercises were
+written for.
+\end{note}
+
+% ============================================================================
+\section{Exercise Map}
+
+\begin{center}
+\small
+\renewcommand{\arraystretch}{1.15}
+\begin{tabular}{@{}lll>{\raggedright\arraybackslash}p{5.3cm}l@{}}
+\toprule
+Ex. & Book p. & PDF p. & Topic & Priority \\
+\midrule
+1.1 & 62 & 91 & Die yield (Power5); why defect rates differ & \textbf{High} \\
+1.2 & 62 & 91 & Dies per wafer, profit per wafer, which chip to make & \textbf{High} \\
+1.3 & 62 & 91 & Yield with a spare core; cost per good chip & \textbf{High} \\
+1.4 & 63 & 92 & Power supply sizing, disk idle power & Low (power) \\
+1.5 & 63--64 & 92--93 & Cooling doors and servers per rack & Low (power) \\
+1.6 & 64 & 93 & Discussion: what else matters besides benchmark results & Medium \\
+1.7 & 64 & 93 & Dual core at lower frequency/voltage; dynamic power & Low (power) \\
+1.8 & 65 & 94 & Moore's law projections, clock-rate limits & Medium \\
+1.9 & 65 & 94 & Energy saving for a real-time deadline & Low (power) \\
+1.10 & 65--66 & 94--95 & Server-farm power-saving options & Low (power) \\
+1.11 & 66 & 95 & FIT, MTTF, availability & Low (not covered) \\
+1.12 & 66 & 95 & MTTF of a server farm; cost of downtime & Low (not covered) \\
+1.13 & 66 & 95 & SPEC ratios, weighted time ratios, speedup & \textbf{High} \\
+1.14 & 66--67 & 95--96 & Amdahl's Law: vectorization & \textbf{High} \\
+1.15 & 67 & 96 & Amdahl's Law from a measured fraction of the \emph{new} time & \textbf{High} \\
+1.16 & 67--68 & 96--97 & Amdahl's Law with a speedup and a slowdown & \textbf{High} \\
+1.17 & 68 & 97 & Amdahl's Law for parallel parts of two applications & \textbf{High} \\
+1.18 & 68 & 97 & Amdahl's Law with communication overhead & Medium \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+% ============================================================================
+\section{Worked Solutions: High Priority}
+
+\ex{1.1}{62}{91}
+\emph{Asks:} the yield of the IBM Power5 from the chip table (Fig.~1.22), and
+why its defect rate is lower than the other chips'.
+\begin{solution}
+\leavevmode
+\begin{enumerate}[label=(\alph*),leftmargin=*]
+  \item $A = 389\text{ mm}^2 = 3.89\text{ cm}^2$, $D = 0.30/\text{cm}^2$:
+  \[
+    \text{Yield} = \left(1 + \frac{0.30\times3.89}{4}\right)^{-4} =
+    1.292^{-4} \approx 0.36 .
+  \]
+  \item It is made in an older, more mature 130~nm process. Defect density
+  falls as a process matures (the learning curve), while the other two chips
+  use a newer 90~nm process.
+\end{enumerate}
+\end{solution}
+
+\ex{1.2}{62}{91}
+\emph{Asks:} profit per 300~mm wafer for a 150~mm$^2$ chip (\$20 profit per
+good chip) and a 250~mm$^2$ chip (\$25), both at the Power5's defect rate;
+which to build, and how to split 150 wafers/month given the demand.
+\begin{solution}
+Dies per wafer $= \pi(15)^2/A - \pi\cdot30/\sqrt{2A}$, $D=0.30$.
+\begin{enumerate}[label=(\alph*),leftmargin=*]
+  \item $A=1.5$: dies $=471.2-54.4 = 416$; yield $=(1+0.1125)^{-4}=0.653$;
+  good $\approx 272$; profit $\approx 272\times\$20 \approx \$5{,}430$ per
+  wafer.
+  \item $A=2.5$: dies $=282.7-42.2 = 240$; yield $=(1+0.1875)^{-4}=0.503$;
+  good $\approx 121$; profit $\approx 121\times\$25 \approx \$3{,}020$ per
+  wafer.
+  \item The smaller chip: it earns $\approx1.8\times$ more per wafer.
+  \item Meeting the demand for the small chip needs $50{,}000/272 \approx
+  184$ wafers, more than the 150 available, and each of its wafers earns more
+  than a large-chip wafer. So all 150 wafers go to the small chip
+  ($\approx40{,}700$ chips). The book gives no profit figure for the Power5
+  itself, so that sub-question cannot be answered numerically.
+\end{enumerate}
+\end{solution}
+
+\ex{1.3}{62}{91}
+\emph{Asks:} put a second core on the Opteron die and keep a chip if at least
+one core is good. Probability of a usable chip, and the new cost per chip if
+the old one cost \$20.
+\begin{solution}
+\leavevmode
+\begin{enumerate}[label=(\alph*),leftmargin=*]
+  \item One core: $A = 1.99$, $D = 0.75$: $p = (1 + 0.75\times1.99/4)^{-4}
+  = 1.373^{-4} \approx 0.28$. At most one of two cores defective:
+  \[
+    p^2 + 2p(1-p) = 1-(1-p)^2 = 1 - 0.72^2 \approx 0.48 .
+  \]
+  \item The die doubles in area, so (ignoring edge effects) half as many dies
+  fit per wafer and each die costs twice as much before yield. Cost per good
+  chip $\approx \$20 \times 2 \times 0.28/0.48 \approx \$23.3$. The spare
+  core \emph{raises} the cost: the yield gain (0.28 $\to$ 0.48) does not
+  make up for doubling the area.
+\end{enumerate}
+\end{solution}
+
+\ex{1.13}{66}{95}
+\emph{Asks:} choose between Opteron and Itanium~2 for a workload that is 60\%
+wupwise-like, 20\% ammp-like, 20\% apsi-like, using the SPEC table
+(Fig.~1.17, book p.~43).
+\begin{solution}
+Data: execution time ratios Opteron/Itanium: wupwise $0.92$, ammp $1.03$,
+apsi $0.65$ (times 51.5/56.1, 136/132, 150/231~s).
+\begin{enumerate}[label=(\alph*),leftmargin=*]
+  \item By overall SPEC (geometric mean of SPECRatios) the Itanium~2 wins:
+  27.12 vs.\ 20.86, i.e.\ $1.30\times$.
+  \item Weighted average of the time ratios:
+  $0.6(0.92) + 0.2(1.03) + 0.2(0.65) = 0.89$.
+  \item $1/0.89 \approx 1.13$: for this workload the Opteron is faster,
+  the opposite of (a).
+\end{enumerate}
+\end{solution}
+\begin{remark}
+A more exact way is to weight the actual times: Opteron $0.6(51.5)+0.2(136)+0.2(150)
+= 88.1$~s, Itanium $0.6(56.1)+0.2(132)+0.2(231) = 106.3$~s, a speedup of
+$1.21$. Either way the conclusion is the same: the right choice depends on
+\emph{your} workload, not on the overall SPEC number.
+\end{remark}
+
+\ex{1.14}{66--67}{95--96}
+\emph{Asks:} a vector mode $10\times$ faster than normal mode; plot speedup
+vs.\ percent vectorization, and find the vectorization needed for various
+targets.
+\begin{solution}
+With vectorized fraction $p$: $\text{Speedup}(p) = 1/\big((1-p) + p/10\big)$.
+\begin{enumerate}[label=(\alph*),leftmargin=*]
+  \item Speedup vs.\ percent vectorization:
+  \begin{center}
+  \begin{tikzpicture}[x=6cm,y=0.42cm,font=\scriptsize]
+    \draw[->] (0,0) -- (1.08,0) node[right]{Percent vectorization};
+    \draw[->] (0,0) -- (0,10.8) node[above]{Net speedup};
+    \foreach \x/\l in {0/0,0.2/20,0.4/40,0.6/60,0.8/80,1/100}
+      \draw (\x,0) -- (\x,-0.2) node[below]{\l\%};
+    \foreach \y in {1,2,4,6,8,10} \draw (0,\y) -- (-0.015,\y) node[left]{\y};
+    \draw[thick,brandprimary,domain=0:1,samples=80] plot (\x,{1/((1-\x)+\x/10)});
+    \fill[brandsecondary] (0.556,2) circle (1.5pt) node[above left]{(55.6\%, 2)};
+    \fill[brandsecondary] (0.889,5) circle (1.5pt) node[above left]{(88.9\%, 5)};
+  \end{tikzpicture}
+  \end{center}
+  The curve stays flat for a long time and shoots up only near 100\%.
+  \item $1/2 = 1 - 0.9p \Rightarrow p = 0.5/0.9 = 55.6\%$.
+  \item New time $=0.5$; vector part $=p/10 = 0.0556$; share $=
+  0.0556/0.5 = 11.1\%$ of the \emph{new} run time.
+  \item Half of the maximum (10) is 5: $0.2 = 1 - 0.9p \Rightarrow p = 88.9\%$.
+  \item At 70\% with a $20\times$ unit: $1/(0.3 + 0.7/20) = 1/0.335 = 2.99$.
+  With the $10\times$ unit the same speedup needs $0.335 = 1 - 0.9p
+  \Rightarrow p = 73.9\%$. Raising vectorization by only $\approx4$ points
+  matches doubling the vector hardware -- probably the cheaper option.
+\end{enumerate}
+\end{solution}
+
+\ex{1.15}{67}{96}
+\emph{Asks:} an enhancement is $10\times$ faster and is in use for 50\% of
+the \emph{enhanced} run time. Overall speedup, and what fraction of the
+\emph{original} time was converted.
+\begin{solution}
+Normalize the new time to 1: 0.5 unenhanced $+$ 0.5 enhanced. The enhanced
+half would have taken $0.5\times10 = 5$ originally.
+\begin{enumerate}[label=(\alph*),leftmargin=*]
+  \item Original time $= 0.5 + 5 = 5.5$, so speedup $= 5.5$.
+  \item $5/5.5 = 90.9\%$ of the original time used the fast mode. Check with
+  Amdahl: $1/(0.091 + 0.909/10) = 5.5$. \checkmark
+\end{enumerate}
+\end{solution}
+\begin{remark}
+This is the classic trap: Amdahl's $F$ is a fraction of the \emph{original}
+time. Plugging in $F=0.5$ would give only $1.82$.
+\end{remark}
+
+\ex{1.16}{67--68}{96--97}
+\emph{Asks:} a faster FP unit ($2\times$, 20\% of time) that slows data-cache
+accesses ($1.5\times$ slower, 10\% of time). Overall speedup, and the new
+time shares.
+\begin{solution}
+\leavevmode
+\begin{enumerate}[label=(\alph*),leftmargin=*]
+  \item $1/(0.8 + 0.2/2) = 1/0.9 = 1.11$.
+  \item New time $= 0.7 + 0.2/2 + 0.1\times1.5 = 0.7 + 0.1 + 0.15 = 0.95$;
+  speedup $= 1/0.95 = 1.053$.
+  \item FP: $0.10/0.95 = 10.5\%$; data cache: $0.15/0.95 = 15.8\%$.
+\end{enumerate}
+\end{solution}
+
+\ex{1.17}{68}{97}
+\emph{Asks:} two applications use 80\% and 20\% of a dual-core's resources;
+parallel parts get speedup 2. Speedup of each application alone, and of the
+whole system.
+\begin{solution}
+\leavevmode
+\begin{enumerate}[label=(\alph*),leftmargin=*]
+  \item App~1, 40\% parallel: $1/(0.6 + 0.4/2) = 1.25$.
+  \item App~2, 99\% parallel: $1/(0.01 + 0.99/2) = 1/0.505 = 1.98$.
+  \item System, parallelizing app~1: $F = 0.8\times0.4 = 0.32$:
+  $1/(0.68+0.16) = 1.19$.
+  \item System, parallelizing app~2: $F = 0.2\times0.99 = 0.198$:
+  $1/(0.802+0.099) = 1.11$.
+\end{enumerate}
+Even though app~2 parallelizes almost perfectly, improving app~1 helps the
+system more -- it is the common case.
+\end{solution}
+
+% ============================================================================
+\section{Worked Solutions: Medium Priority}
+
+\ex{1.18}{68}{97}
+\emph{Asks:} speedup on $N$ processors for an 80\%-parallel program, then
+with communication overhead that grows per processor or per doubling, and the
+best $N$.
+\begin{solution}
+\leavevmode
+\begin{enumerate}[label=(\alph*),leftmargin=*]
+  \item $1/(0.2 + 0.8/N)$.
+  \item Counting 7 added processors: overhead $=7\times0.5\% = 3.5\%$:
+  $1/(0.2+0.1+0.035) = 2.99$ (2.94 if you charge all 8 processors).
+  \item 1$\to$8 is three doublings, overhead 1.5\%: $1/(0.2+0.1+0.015) =
+  3.17$.
+  \item $1/\big(0.2 + 0.8/N + 0.005\log_2N\big)$.
+  \item Time $T(N) = (1-P) + P/N + 0.005\log_2N$. Setting $dT/dN = -P/N^2 +
+  0.005/(N\ln2) = 0$ gives $N^\ast = P/(0.005\ln 2) \approx 289P$ (about 231
+  processors for $P = 0.8$).
+\end{enumerate}
+\end{solution}
+
+\ex{1.8}{65}{94}
+\emph{Asks:} project transistor counts and clock rates ten years ahead, and
+explain what limited clock growth.
+\begin{solution}
+(a) Doubling every 2 years for 10 years: $2^5 = 32\times$ (about
+$100\times$ with an 18-month doubling). (b)/(c) Apply the 1990s growth rate
+and the recent much lower rate from Section~1.4/Fig.~1.11 to the 2005 clock
+rate. (d) Power (the power wall): higher clocks need more power than can be
+cooled. The extra transistors now go into multiple cores and larger caches.
+(e) Apply the stated slowing trend; growth keeps decreasing (roughly halving
+again, to the order of 10--20\%/year).
+\end{solution}
+
+\ex{1.6}{64}{93}
+\emph{Asks:} why someone might choose the server that loses on the reported
+power/performance benchmarks.
+\begin{solution}
+Reported benchmarks may not match your workload (single-thread performance,
+floating point, memory size and bandwidth, I/O); also price and
+price-performance, software compatibility, reliability/availability,
+support, and the fact that a vendor chose which results to report.
+\end{solution}
+
+% ============================================================================
+\section{Hints: Low Priority (beyond our Lecture~1)}
+
+These use the dynamic power equation and dependability metrics from
+Sections~1.5 and 1.7 of the book, which our lecture only mentioned.
+\begin{itemize}[leftmargin=*]
+  \item \textbf{1.4, 1.5} (pp.~63--64): add the component powers from
+  Fig.~1.23, divide by the supply efficiency; servers per cooling door $=$
+  door capacity / power per server.
+  \item \textbf{1.7, 1.9, 1.10} (pp.~64--66): dynamic power $\propto
+  \tfrac12 C V^2 f$; energy $\propto C V^2$. Halving $V$ and $f$ cuts energy
+  to $1/4$ and power to $1/8$.
+  \item \textbf{1.11} (p.~66): MTTF $=10^9/\text{FIT}$ hours ($10^7$~h for
+  FIT 100); availability $=\text{MTTF}/(\text{MTTF}+\text{MTTR})$; with 1000
+  parts that all fail together, MTTF$/1000$.
+  \item \textbf{1.12} (p.~66): treat failures as independent with rate
+  $1/\text{MTTF}$ per machine; compare the extra hardware cost with the
+  downtime cost from Fig.~1.3.
+\end{itemize}
+
+\end{document}

@@ -1,0 +1,1306 @@
+\lecture{3}{Pipelining}{September 27, 2026}
+
+\subsection{Overview}
+
+Pipelining overlaps the execution of several instructions so that, ideally,
+one instruction completes every clock cycle. This lecture builds the classic
+5-stage MIPS pipeline, quantifies its speedup, and then studies what breaks
+the ideal: structural, data, and control hazards, together with the hardware
+(forwarding, interlocks, early branch resolution) and compiler (scheduling,
+delay slots) techniques that reduce their cost.
+
+\subsection{What is Pipelining?}
+
+\begin{definition}[Pipelining]
+\textbf{Pipelining} is an implementation technique in which multiple
+instructions are overlapped in execution.
+\end{definition}
+
+Real-life pipelining examples:
+\begin{itemize}
+  \item Doing laundry (washing, drying, folding multiple loads)
+  \item Factory production lines
+  \item Traffic (?)
+\end{itemize}
+
+\subsubsection{Instruction Pipelining}
+
+\begin{definition}[Instruction pipeline, stage, machine cycle]
+\leavevmode
+\begin{itemize}
+  \item Instruction pipelining is a CPU implementation technique where
+  \textbf{multiple operations} on a number of instructions are \textbf{overlapped}.
+  \item An instruction execution pipeline involves a number of steps, where each
+  step completes a part of an instruction. Each step is called a \emph{pipeline
+  stage} or \emph{pipeline segment}.
+  \item The stages are connected in a \textbf{linear fashion}: one stage to the
+  next, forming the pipeline -- instructions enter at one end, progress through
+  the stages, and exit at the other end.
+  \item The time to move an instruction one step down the pipeline is equal to
+  \emph{the machine cycle} and is determined by the stage with the longest
+  processing delay.
+\end{itemize}
+\end{definition}
+
+\begin{itemize}
+  \item Pipelining \textbf{increases} the CPU \textbf{instruction throughput}:
+  the number of instructions completed per cycle.
+  \begin{itemize}
+    \item Under ideal conditions (no stall cycles), instruction throughput is
+    one instruction per machine cycle, i.e.\ \textcolor{red}{ideal CPI = 1}.
+  \end{itemize}
+  \item Pipelining \textbf{does not reduce} the execution time of an
+  individual instruction: the time needed to complete all processing steps of
+  an instruction (also called \emph{instruction completion latency}).
+  \begin{itemize}
+    \item Minimum instruction latency $= n$ cycles, where $n$ is the number of
+    pipeline stages.
+  \end{itemize}
+\end{itemize}
+
+\begin{explanation}
+\textbf{Why is the ideal CPI equal to 1?} CPI counts how many cycles pass, on
+average, between \emph{completions} of instructions -- not how long each
+instruction takes. In a $k$-stage pipeline each instruction still needs $k$
+cycles from fetch to write-back, but once the pipeline is full a new
+instruction enters and an old one leaves every cycle. For $n$ instructions the
+pipeline needs $k + (n-1)$ cycles, so
+\[
+  \CPI = \frac{k + n - 1}{n} \;\longrightarrow\; 1 \quad (n\to\infty).
+\]
+The fill cost of $k-1$ cycles is paid only once. Stalls caused by hazards add
+cycles without completing instructions, which is why real pipelines have
+$\CPI = 1 + \text{stall cycles per instruction}$.
+\end{explanation}
+
+% ==========================================================================
+\subsection{Pipelining Example: Laundry}
+
+\begin{eg}[Doing laundry]
+Ann, Brian, Cathy, and Dave (A, B, C, D) each have one load of clothes to
+wash, dry, and fold.
+\begin{itemize}
+  \item Washer takes 30 minutes
+  \item Dryer takes 40 minutes
+  \item ``Folder'' takes 20 minutes
+\end{itemize}
+\end{eg}
+
+\subsubsection{Sequential laundry}
+
+\begin{center}
+\begin{tikzpicture}[x=0.95cm,y=-0.9cm,font=\scriptsize]
+  \def\loads{A/0/2,B/1/3,C/2/4,D/3/5} % task/row offset(unused)/-
+  \draw[-{Stealth}] (0,-0.6) -- (13.5,-0.6) node[right]{time (hours)};
+  \foreach \t/\lab in {0/6PM,1.5/7,3.5/8,5.5/9,7.5/10,9.5/11,11.5/Midnight}
+    \node at (\t,-1.0) {\lab};
+  \foreach \task/\row in {A/0,B/1,C/2,D/3}{
+    \pgfmathsetmacro{\xoff}{\row*3}
+    \node[left] at (-0.3,\row) {\task};
+    \draw[fill=orange!30] (\xoff,\row-0.35) rectangle ++(1,0.7) node[midway]{Wash};
+    \draw[fill=cyan!25]   (\xoff+1,\row-0.35) rectangle ++(1.33,0.7) node[midway]{Dry};
+    \draw[fill=red!20]    (\xoff+2.33,\row-0.35) rectangle ++(0.67,0.7) node[midway]{Fold};
+  }
+\end{tikzpicture}
+\end{center}
+
+\begin{remark}
+\textbf{Sequential laundry takes 6 hours for 4 loads} (each load: $30+40+20=90$
+min, done strictly one after another).
+\end{remark}
+
+\subsubsection{Pipelined laundry (start work ASAP)}
+
+\begin{center}
+\begin{tikzpicture}[x=1.05cm,y=-0.9cm,font=\scriptsize]
+  \draw[-{Stealth}] (0,-0.6) -- (7.2,-0.6) node[right]{time (hours)};
+  \foreach \t/\lab in {0/6PM,1.5/7,3.5/8,5.5/9}
+    \node at (\t,-1.0) {\lab};
+  \foreach \task/\row in {A/0,B/1,C/2,D/3}{
+    \pgfmathsetmacro{\xoff}{\row*1.33}
+    \node[left] at (-0.3,\row) {\task};
+    \draw[fill=orange!30] (\xoff,\row-0.35) rectangle ++(1,0.7) node[midway]{Wash};
+    \draw[fill=cyan!25]   (\xoff+1,\row-0.35) rectangle ++(1.33,0.7) node[midway]{Dry};
+    \draw[fill=red!20]    (\xoff+2.33,\row-0.35) rectangle ++(0.67,0.7) node[midway]{Fold};
+  }
+\end{tikzpicture}
+\end{center}
+
+\begin{remark}
+\textbf{Pipelined laundry takes 3.5 hours for 4 loads.}
+\[
+  \text{Speedup} = \frac{6}{3.5} = 1.7
+\]
+\end{remark}
+
+\subsubsection{Pipelining lessons}
+
+\begin{noot}{Pipelining lessons}
+\begin{itemize}
+  \item Pipelining does not help the \textbf{latency} of a single task; it
+  helps the \textbf{throughput} of the entire workload.
+  \item Pipeline rate is limited by the \textbf{slowest} pipeline stage.
+  \item Multiple tasks operate \textbf{simultaneously}, using
+  \textbf{different resources}.
+  \item Potential speedup $=$ number of pipe stages.
+  \item Unbalanced lengths of pipe stages reduce speedup (dryer is the
+  bottleneck at 40 min $\Rightarrow$ every stage effectively takes 40 min).
+  \item Time to ``fill'' the pipeline and time to ``drain'' it reduces
+  speedup.
+  \item As long as we have \textbf{separate resources}, we can pipeline the
+  tasks.
+  \item If one load depends on another, we have to wait (delay/stall for
+  \emph{dependencies}).
+\end{itemize}
+\end{noot}
+
+% ==========================================================================
+\subsection{CPU Pipelining}
+
+\subsubsection{The 5 classic MIPS stages}
+
+\begin{enumerate}
+  \item \textbf{IF} -- Fetch instruction from instruction memory
+  \item \textbf{ID} -- Read registers while decoding the instruction
+  (Reg/Dec)
+  \item \textbf{EX} -- Execute the operation or calculate an address,
+  depending on instruction type
+  \item \textbf{MEM} -- Access an operand from data memory
+  \item \textbf{WB} -- Write the result into a register
+\end{enumerate}
+
+\begin{center}
+\begin{tikzpicture}[font=\small]
+  \draw[-{Stealth}] (0,0) -- (8.2,0);
+  \foreach \x/\lab in {0.8/Cycle 1,2.4/Cycle 2,4.0/Cycle 3,5.6/Cycle 4,7.2/Cycle 5}
+    \node[red,above] at (\x,0.15) {\lab};
+  \node[left] at (-0.3,-0.6) {Load};
+  \foreach \x/\lab in {0/Ifetch,1.6/Reg/Dec,3.2/Exec,4.8/Mem,6.4/Wr}
+    \draw[fill=red!10] (\x,-1.0) rectangle ++(1.5,0.7) node[midway]{\scriptsize \lab};
+\end{tikzpicture}
+\end{center}
+
+Resources needed by a \texttt{lw} (load) instruction at each stage:
+
+\begin{center}
+\begin{tabular}{@{}ll@{}}
+\toprule
+Stage & Resource \\
+\midrule
+Ifetch (IF)  & Instruction memory (IM) \\
+Reg/Dec (ID) & Register file \& decoder (Reg) \\
+Exec (EX)    & ALU \\
+Mem (MEM)    & Data memory (DM) \\
+Wr (WB)      & Register file (Reg) \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\begin{note}
+Accessing source and destination registers happens in \emph{two different
+halves} of the clock cycle:
+\begin{itemize}
+  \item \textbf{Read} occurs in the 2\textsuperscript{nd} half of the ID
+  cycle.
+  \item \textbf{Write} occurs in the 1\textsuperscript{st} half of the WB
+  cycle.
+\end{itemize}
+This lets an instruction read a register in the same cycle that an earlier
+instruction writes it, and get the correctly updated value.
+\end{note}
+
+\subsubsection{Single-cycle vs.\ pipelined execution -- example}
+
+Consider three loads: \texttt{lw \$1,100(\$0)}, \texttt{lw \$2,200(\$0)},
+\texttt{lw \$3,300(\$0)}. Each of the 5 stages below is 2\,ns (limited by the
+slowest resource); a non-pipelined machine needs one long 8\,ns cycle per
+instruction.
+
+\textbf{Single-cycle, non-pipelined:} total time for 3 instructions
+$= 3 \times 8\text{ns} = 24$\,ns.
+
+\begin{center}
+\begin{tikzpicture}[x=0.42cm,y=-1cm,font=\scriptsize]
+  \foreach \i/\row in {0/0,1/1,2/2}{
+    \pgfmathsetmacro{\xoff}{\i*8}
+    \draw[fill=blue!8] (\xoff,\row) rectangle ++(2,0.8) node[midway]{IF};
+    \draw[fill=blue!8] (\xoff+2,\row) rectangle ++(1,0.8) node[midway]{Reg};
+    \draw[fill=blue!8] (\xoff+3,\row) rectangle ++(2,0.8) node[midway]{ALU};
+    \draw[fill=blue!8] (\xoff+5,\row) rectangle ++(2,0.8) node[midway]{Data};
+    \draw[fill=blue!8] (\xoff+7,\row) rectangle ++(1,0.8) node[midway]{Reg};
+  }
+\end{tikzpicture}
+\end{center}
+
+\textbf{Single-cycle, pipelined} (each stage clocked at 2\,ns; write to
+register in 1st half of clock, read in 2nd half): total time for 3
+instructions $= 14$\,ns. Each additional instruction adds only 2\,ns.
+
+\begin{center}
+\begin{tikzpicture}[x=0.9cm,y=-1cm,font=\scriptsize]
+  \foreach \i/\row in {0/0,1/1,2/2}{
+    \pgfmathsetmacro{\xoff}{\i*1}
+    \draw[fill=green!10] (\xoff,\row) rectangle ++(1,0.8) node[midway]{IF};
+    \draw[fill=green!10] (\xoff+1,\row) rectangle ++(1,0.8) node[midway]{Reg};
+    \draw[fill=green!10] (\xoff+2,\row) rectangle ++(1,0.8) node[midway]{ALU};
+    \draw[fill=green!10] (\xoff+3,\row) rectangle ++(1,0.8) node[midway]{Data};
+    \draw[fill=green!10] (\xoff+4,\row) rectangle ++(1,0.8) node[midway]{Reg};
+  }
+\end{tikzpicture}
+\end{center}
+
+Operation times used throughout these notes:
+
+\begin{center}
+\begin{tabular}{@{}lcccccc@{}}
+\toprule
+Instr.\ class & Instr.\ fetch & Reg.\ read & ALU op & Data access & Reg.\ write & Total \\
+\midrule
+lw                     & 2ns & 1ns & 2ns & 2ns & 1ns & 8ns \\
+sw                     & 2ns & 1ns & 2ns & 2ns &     & 7ns \\
+add, sub, and, or, slt & 2ns & 1ns & 2ns &     & 1ns & 6ns \\
+beq                    & 2ns & 1ns & 2ns &     &     & 5ns \\
+\bottomrule
+\end{tabular}
+\end{center}
+(Clock cycle must accommodate the slowest instruction $\Rightarrow$ 2ns.)
+
+\subsubsection{Theoretical speedup}
+
+\begin{theorem}[Ideal pipeline speedup]
+For $n$ tasks through a $k$-stage pipeline with \emph{balanced} stages, let
+$p$ be the time to complete one task \emph{without} pipelining (so each
+individual pipeline stage takes $p/k$). Non-pipelined, $n$ tasks take
+$n\cdot p$; pipelined, the first task takes $p$ to fill the pipeline and
+each of the remaining $n-1$ tasks adds one stage-time $p/k$:
+\[
+  \text{Speedup} = \frac{n \cdot p}{\dfrac{p}{k}(n-1) + p}
+  = \frac{nk}{n+k-1}
+  \;\approx\; k
+  \quad \text{(for large $n$)}
+\]
+\end{theorem}
+
+\begin{proof}
+Non-pipelined, each task takes $p$, so $n$ tasks take $np$. Pipelined, the
+first task needs all $k$ stages ($k\cdot p/k = p$), and each later task
+finishes one stage-time $p/k$ after the previous one. Divide, and note that
+$\frac{p}{k}(n-1)+p = \frac{p}{k}(n+k-1)$.
+\end{proof}
+
+Practically, speedup is \emph{less than} the number of stages because:
+\begin{itemize}
+  \item Stages are imperfectly balanced.
+  \item Pipelining needs overhead (extra latches, control logic).
+\end{itemize}
+
+\begin{eg}[Three vs.\ 1003 loads]
+3 consecutive instructions: non-pipelined
+$8\times3=24$ns, pipelined $14$ns $\Rightarrow$ speedup $=24/14=1.7$.
+For 1003 consecutive instructions: non-pipelined $=1000\times8+24=8024$ns;
+pipelined $=1000\times2+14=2014$ns $\Rightarrow$ speedup $\approx 3.98 \approx
+8\text{ns}/2\text{ns}$ -- near-perfect speedup. Performance increases with the
+number of instructions (throughput dominates).
+\end{eg}
+
+\subsubsection{Why MIPS is easy to pipeline}
+
+MIPS was designed with pipelining in mind:
+\begin{enumerate}
+  \item \textbf{All instructions are the same length.} Fetch in stage 1,
+  decode in stage 2. If instruction length varies (e.g.\ 80x86), pipelining
+  is more challenging.
+  \item \textbf{Limited instruction formats}, with source registers always in
+  the same place $\Rightarrow$ can read the register file before decoding
+  the instruction.
+  \item \textbf{Memory operands appear only in \texttt{lw} \& \texttt{sw}.}
+  We can use the Execute stage to calculate the memory address and access
+  memory in the next stage. In a machine that could operate on memory
+  operands directly (e.g.\ 80x86), the Execute/Memory stages would expand
+  into: address calculation, memory access, execute.
+  \item \textbf{Operands must be aligned in memory}, so a single data
+  transfer needs only one memory access.
+\end{enumerate}
+
+% ==========================================================================
+\subsection{MIPS In-Order Single-Issue Integer Pipeline}
+
+\subsubsection{Ideal pipeline operation (no stalls)}
+
+Fill cycles $=$ number of stages $-1$. With $n=5$ stages, ideal CPI $=1$.
+
+\begin{center}
+\begin{tikzpicture}[x=1.15cm,y=-0.9cm,font=\scriptsize]
+  \foreach \x in {1,...,9} \node at (\x-0.5,-0.6) {\x};
+  \node at (-1.1,-0.6) {\bfseries Clock};
+  \foreach \i/\row/\name in {0/0/Instr $i$,1/1/Instr $i{+}1$,2/2/Instr $i{+}2$,3/3/Instr $i{+}3$,4/4/Instr $i{+}4$}{
+    \node[left] at (-1.1,\row) {\name};
+    \foreach \stage [count=\xi from 0] in {IF,ID,EX,MEM,WB}{
+      \pgfmathsetmacro{\xoff}{\i+\xi}
+      \draw[fill=blue!8] (\xoff,\row-0.35) rectangle ++(1,0.7) node[midway]{\stage};
+    }
+  }
+\end{tikzpicture}
+\end{center}
+
+IF = Instruction Fetch, ID = Instruction Decode, EX = Execution,
+MEM = Memory Access, WB = Write Back.
+\emph{In-order} = instructions execute in original program order.
+\emph{Ideal} = pipeline operation without any stall cycles.
+
+\subsubsection{5 steps of the MIPS datapath (with pipeline registers)}
+
+Data is carried from one stage to the next in \textbf{pipeline
+registers/latches} (IF/ID, ID/EX, EX/MEM, MEM/WB), which hold temporary
+values between clocks and the info needed for later stages.
+
+\begin{center}
+\begin{tikzpicture}[
+  font=\scriptsize,
+  block/.style={draw,fill=blue!10,minimum height=1.1cm,align=center},
+  reg/.style={draw,fill=green!30,minimum width=0.18cm,minimum height=4.6cm},
+  mux/.style={draw,trapezium,trapezium angle=70,minimum height=0.5cm,fill=yellow!30,shape border rotate=90},
+  >=Stealth]
+  % pipeline register bars
+  \foreach \x/\lab in {2.3/IF{/}ID,5.4/ID{/}EX,8.7/EX{/}MEM,11.4/MEM{/}WB}{
+    \draw[reg] (\x,-4.9) rectangle ++(0.18,4.6);
+    \node[above] at (\x+0.1,-0.1) {\lab};
+  }
+  \node[block,minimum width=1.1cm] (pc) at (0,-2.5) {PC};
+  \node[block,minimum width=1.6cm] (im) at (1.3,-3.8) {Inst.\ Mem};
+  \node[block,minimum width=1.7cm] (rf) at (3.6,-2.3) {Register\\File};
+  \node[block,minimum width=1.5cm] (se) at (3.6,-4.4) {Sign\\Extend};
+  \node[mux] (m1) at (5.9,-1.6) {mux};
+  \node[mux] (m2) at (5.9,-3.0) {mux};
+  \node[draw,fill=yellow!40,minimum width=0.9cm,minimum height=1.1cm] (alu) at (7.2,-2.3) {ALU};
+  \node[block,minimum width=1.6cm] (dm) at (9.7,-2.3) {Data\\Mem};
+  \node[mux] (m3) at (12.2,-2.3) {mux};
+
+  \draw[->] (pc) -- (im);
+  \draw[->] (im.east) -- ++(0.6,0) |- (rf.west);
+  \draw[->] (rf.east) -- (m1.west);
+  \draw[->] (se.east) -- (m2.west);
+  \draw[->] (m1.east) -- (alu.north west);
+  \draw[->] (m2.east) -- (alu.south west);
+  \draw[->] (alu.east) -- ++(0.6,0) |- (dm.west);
+  \draw[->] (dm.east) -- (m3.west);
+  \draw[->] (m3.east) -- ++(0.8,0) |- ++(0,4.2) -| (rf.north);
+\end{tikzpicture}
+\end{center}
+
+Note: this is a \emph{data-stationary} control scheme -- each pipeline stage
+locally decodes the control signals it needs from the instruction bits
+carried along in the pipeline registers.
+
+\subsubsection{Visualizing the pipeline (register read/write timing)}
+
+\begin{center}
+\begin{tikzpicture}[x=1.3cm,y=-1.0cm,font=\scriptsize]
+  \foreach \x in {1,...,7} \node[red] at (\x-0.5,-0.6) {Cycle \x};
+  \foreach \i/\row in {0/0,1/1,2/2,3/3}{
+    \node[left] at (-0.3,\row) {};
+    \draw[fill=blue!8] (\i+0,\row-0.35) rectangle ++(1,0.7) node[midway]{Ifetch};
+    \draw[fill=blue!25] (\i+1,\row-0.35) rectangle ++(1,0.7) node[midway]{Reg};
+    \draw[fill=blue!8] (\i+2,\row-0.35) rectangle ++(1,0.7) node[midway]{ALU};
+    \draw[fill=blue!8] (\i+3,\row-0.35) rectangle ++(1,0.7) node[midway]{DMem};
+    \draw[fill=blue!25] (\i+4,\row-0.35) rectangle ++(1,0.7) node[midway]{Reg};
+  }
+\end{tikzpicture}
+\end{center}
+
+\begin{itemize}
+  \item Read operand registers in the \textbf{second half} of the ID cycle.
+  \item Write the destination register in the \textbf{first half} of the WB
+  cycle.
+\end{itemize}
+This is an ideal integer in-order 5-stage pipeline.
+
+\subsubsection{Pipelining performance example}
+
+\begin{eg}[Pipelining a multi-cycle CPU]
+For an unpipelined CPU: clock cycle $=1$ns; 4 cycles for ALU
+operations/branches, 5 cycles for memory operations; instruction mix
+$40\%/20\%/40\%$ (ALU/branch/memory). Pipelining adds 0.2ns to the clock
+cycle.
+
+\[
+  \text{Non-pipelined avg.\ instr.\ time} = 1\text{ns}\times((40\%+20\%)\times4 + 40\%\times5) = 4.4\text{ns}
+\]
+\[
+  \text{Pipelined avg.\ instr.\ time} = 1\text{ns} + 0.2\text{ns} = 1.2\text{ns}
+\]
+\[
+  \text{Speedup} = \frac{4.4}{1.2} = 3.7 \times \text{ faster}
+\]
+\end{eg}
+
+% ==========================================================================
+\subsection{Pipeline Hazards}
+
+\begin{definition}[Pipeline hazards]
+\textbf{Hazards} are situations in pipelining that prevent the next
+instruction in the instruction stream from executing during its designated
+clock cycle, possibly resulting in one or more \emph{stall} (wait) cycles.
+Hazards increase CPI above 1 and are classified into three types:
+
+\begin{itemize}
+  \item \textbf{Structural hazards}: arise from hardware resource conflicts
+  when available hardware cannot support all possible combinations of
+  instructions.
+  \item \textbf{Data hazards}: arise when an instruction depends on the
+  result of a previous instruction in a way exposed by the overlapping of
+  instructions in the pipeline.
+  \item \textbf{Control hazards}: arise from the pipelining of conditional
+  branches and other instructions that change the PC.
+\end{itemize}
+\end{definition}
+
+\begin{note}
+An instruction ``issued later'' than instruction $x$
+was issued after $x$ and is \emph{not as far along} in the pipeline. An
+instruction ``issued earlier'' than $x$ was issued before $x$ and is
+\emph{further along} in the pipeline.
+\end{note}
+
+\subsubsection{Stalls and performance}
+
+Stalls impede progress of a pipeline and cause deviation from 1
+instruction/cycle.
+\begin{prop}[CPI and speedup with stalls]
+\[
+  \mathrm{CPI}_{\text{pipelined}} = \text{Ideal CPI} + \text{Pipeline stall cycles per instruction} = 1 + \text{stall cycles/instr.}
+\]
+Ignoring overhead, assuming balanced stages:
+\[
+  \text{Speedup} = \frac{\mathrm{CPI}_{\text{unpipelined}}}{1 + \text{pipeline stall cycles per instruction}}
+\]
+\end{prop}
+
+% ==========================================================================
+\subsection{Structural Hazards}
+
+\begin{definition}[Structural hazard]
+In pipelined machines, overlapped instruction execution requires pipelining
+of functional units and duplication of resources so all possible
+instruction combinations can be supported. If a \textbf{resource conflict}
+arises because a hardware resource is required by more than one instruction
+in a single cycle, and it cannot be accommodated, a \textbf{structural
+hazard} occurs -- e.g.\ a pipelined machine with a single shared memory port
+for instructions and data $\Rightarrow$ stall the pipeline for one cycle for
+a memory data access.
+\end{definition}
+
+\subsubsection{Example: single shared memory port}
+
+\begin{center}
+\begin{tikzpicture}[x=1.35cm,y=-1.0cm,font=\scriptsize]
+  \foreach \i/\row/\name in {0/0/Load,1/1/Instr.\,1,2/2/Instr.\,2,3/3/Instr.\,3,4/4/Instr.\,4}{
+    \node[left] at (-0.6,\row) {\name};
+    \draw[fill=blue!8] (\i+0,\row-0.35) rectangle ++(1,0.7) node[midway]{Mem};
+    \draw[fill=green!25] (\i+1,\row-0.35) rectangle ++(1,0.7) node[midway]{Reg};
+    \draw[fill=blue!8] (\i+2,\row-0.35) rectangle ++(1,0.7) node[midway]{ALU};
+    \draw[fill=red!25,draw=red] (\i+3,\row-0.35) rectangle ++(1,0.7) node[midway]{DM};
+    \draw[fill=orange!25] (\i+4,\row-0.35) rectangle ++(1,0.7) node[midway]{Reg};
+  }
+  \node[draw=blue,thick,ellipse,minimum width=1.4cm,minimum height=5.2cm] at (3.5,1.65) {};
+  \node[below] at (3.5,4.4) {\textcolor{blue}{\bfseries conflict: all instructions want DM in the same cycle}};
+\end{tikzpicture}
+\end{center}
+
+\textbf{Resolution: stall (insert a bubble/NOP).}
+
+\begin{center}
+\begin{tikzpicture}[x=1.35cm,y=-1.0cm,font=\scriptsize]
+  \foreach \i/\row/\name in {0/0/Load,1/1/Instr.\,1,2/2/Instr.\,2}{
+    \node[left] at (-0.6,\row) {\name};
+    \draw[fill=blue!8] (\i+0,\row-0.35) rectangle ++(1,0.7) node[midway]{Mem};
+    \draw[fill=green!25] (\i+1,\row-0.35) rectangle ++(1,0.7) node[midway]{Reg};
+    \draw[fill=blue!8] (\i+2,\row-0.35) rectangle ++(1,0.7) node[midway]{ALU};
+    \draw[fill=red!25] (\i+3,\row-0.35) rectangle ++(1,0.7) node[midway]{DM};
+    \draw[fill=orange!25] (\i+4,\row-0.35) rectangle ++(1,0.7) node[midway]{Reg};
+  }
+  \node[left] at (-0.6,3) {Stall};
+  \foreach \x [count=\xi from 0] in {2,3,4,5,6}
+    \node[draw,fill=cyan!15,circle,minimum size=0.6cm] at (\x+0.5,3) {\scriptsize Bubble};
+  \node[left] at (-0.6,4) {Instr.\,3};
+  \foreach \i/\lab [count=\xi from 0] in {5/Mem,6/Reg,7/ALU,8/DM,9/Reg}
+    \draw[fill=blue!8] (\i,3.65) rectangle ++(1,0.7) node[midway]{\lab};
+\end{tikzpicture}
+\end{center}
+
+\subsubsection{Structural hazard: numeric example}
+
+\begin{eg}[Is a structural hazard worth it?]
+Given data references are $40\%$ of a program, ideal pipelined CPI $=1$. A
+machine with a data-memory structural hazard needs 1 stall cycle per data
+reference, but its clock rate is $1.05\times$ higher than the ideal
+machine:
+\[
+  \text{Avg.\ instr.\ time} = (1+0.4\times1)\times\frac{\text{Clock}_{\text{ideal}}}{1.05} = 1.3\times \text{Clock}_{\text{ideal}}
+\]
+$\Rightarrow$ the machine \emph{without} the hazard is still better ($1.3 >
+1$).
+\end{eg}
+
+\begin{remark}
+\textbf{Remember the common case!} All else equal, a machine without
+structural hazards always has lower CPI, but sometimes it is cheaper (in
+hardware) to allow a hazard than to eliminate it -- weigh HW cost of
+pipelining/duplicating a unit against how often the hazard actually occurs.
+\end{remark}
+
+% ==========================================================================
+\subsection{Data Hazards}
+
+\begin{definition}[Data hazard]
+Data hazards occur when the pipeline changes the order of read/write
+accesses to operands compared to the original sequential order, potentially
+causing \textbf{incorrect execution}. One or more instructions may need to
+stall to ensure correctness.
+\end{definition}
+
+\begin{eg}[RAW on R1]
+\leavevmode
+\begin{lstlisting}
+ADD R1, R2, R3
+SUB R4, R1, R5
+AND R6, R1, R7
+OR  R8, R1, R9
+XOR R10, R1, R11
+\end{lstlisting}
+All instructions after \texttt{ADD} use its result (\texttt{R1}); \texttt{SUB}
+and \texttt{AND} would need to stall for correct execution without
+forwarding.
+\end{eg}
+
+\subsubsection{Data Hazard Classification}
+
+\begin{definition}[RAW, WAW, WAR]
+Given two instructions $I$, $J$, with $I$ occurring before $J$ in program
+order:
+
+\begin{itemize}
+  \item \textbf{RAW} (read after write) -- \emph{true data dependence}: $J$
+  tries to read a source before $I$ writes it, so $J$ incorrectly gets the
+  old value.
+  \item \textbf{WAW} (write after write) -- \emph{name dependence}: $J$
+  tries to write an operand before it is written by $I$; the writes end up
+  performed in the wrong order.
+  \item \textbf{WAR} (write after read) -- \emph{name dependence}: $J$
+  tries to write a destination before it is read by $I$, so $I$ incorrectly
+  gets the new value.
+  \item \textbf{RAR} (read after read): \emph{not} a hazard.
+\end{itemize}
+\end{definition}
+
+\begin{center}
+\begin{tikzpicture}[node distance=0.9cm and 1.6cm, font=\scriptsize,
+  box/.style={draw,minimum width=2.1cm,minimum height=0.65cm,align=center}]
+  \node[box,fill=blue!10] (iw1) {$I$ (Write)};
+  \node[box,fill=gray!10,below=of iw1] (jr1) {$J$ (Read)};
+  \node[box,fill=yellow!15,right=of $(iw1)!0.5!(jr1)$] (so1) {Shared\\Operand};
+  \draw[->] (iw1) -- (so1); \draw[<-] (jr1) -- (so1);
+  \node[below=0.3cm of jr1] {\bfseries RAW (true dependence)};
+
+  \node[box,fill=blue!10,right=5.2cm of iw1] (ir2) {$I$ (Read)};
+  \node[box,fill=gray!10,below=of ir2] (jw2) {$J$ (Write)};
+  \node[box,fill=yellow!15,left=1.6cm of $(ir2)!0.5!(jw2)$] (so2) {Shared\\Operand};
+  \draw[<-] (ir2) -- (so2); \draw[->] (jw2) -- (so2);
+  \node[below=0.3cm of jw2] {\bfseries WAR (name dependence)};
+\end{tikzpicture}
+
+\vspace{0.6cm}
+
+\begin{tikzpicture}[node distance=0.9cm and 1.6cm, font=\scriptsize,
+  box/.style={draw,minimum width=2.1cm,minimum height=0.65cm,align=center}]
+  \node[box,fill=blue!10] (iw3) {$I$ (Write)};
+  \node[box,fill=gray!10,below=of iw3] (jw3) {$J$ (Write)};
+  \node[box,fill=yellow!15,right=of $(iw3)!0.5!(jw3)$] (so3) {Shared\\Operand};
+  \draw[->] (iw3) -- (so3); \draw[->] (jw3) -- (so3);
+  \node[below=0.3cm of jw3] {\bfseries WAW (name dependence)};
+
+  \node[box,fill=blue!10,right=5.2cm of iw3] (ir4) {$I$ (Read)};
+  \node[box,fill=gray!10,below=of ir4] (jr4) {$J$ (Read)};
+  \node[box,fill=yellow!15,left=1.6cm of $(ir4)!0.5!(jr4)$] (so4) {Shared\\Operand};
+  \draw[<-] (ir4) -- (so4); \draw[<-] (jr4) -- (so4);
+  \node[below=0.3cm of jr4] {\bfseries RAR (not a hazard)};
+\end{tikzpicture}
+\end{center}
+
+\begin{itemize}
+  \item \textbf{RAW example:} \texttt{i: ADD R1,R2,R3} \quad
+        \texttt{j: SUB R4,R1,R6}
+  \item \textbf{WAW example:} \texttt{i: SUB R1,R4,R3} \quad
+        \texttt{j: ADD R1,R2,R3}
+  \item \textbf{WAR example:} \texttt{i: SUB R4,R1,R3} \quad
+        \texttt{j: ADD R1,R2,R3}
+\end{itemize}
+\begin{remark}
+RAW and WAW can be resolved with stalling or forwarding; WAR does not occur
+in the simple MIPS pipeline because reads happen early (ID) and writes late
+(WB) in program order, so instructions never write before an earlier one has
+read (only relevant for pipelines that reorder execution).
+\end{remark}
+
+\subsubsection{Data hazard on R1 (visualized)}
+
+\begin{center}
+\begin{tikzpicture}[x=1.35cm,y=-1.0cm,font=\scriptsize]
+  \foreach \i/\row/\name in {0/0/{add r1,r2,r3},1/1/{sub r4,r1,r3},2/2/{and r6,r1,r7},3/3/{or r8,r1,r9},4/4/{xor r10,r1,r11}}{
+    \node[left,anchor=east] at (-0.2,\row) {\texttt{\name}};
+    \draw[fill=blue!8] (\i+0,\row-0.35) rectangle ++(1,0.7) node[midway]{fetch};
+    \draw[fill=green!25] (\i+1,\row-0.35) rectangle ++(1,0.7) node[midway]{Reg};
+    \draw[fill=blue!8] (\i+2,\row-0.35) rectangle ++(1,0.7) node[midway]{ALU};
+    \draw[fill=blue!8] (\i+3,\row-0.35) rectangle ++(1,0.7) node[midway]{DMem};
+    \draw[fill=orange!35] (\i+4,\row-0.35) rectangle ++(1,0.7) node[midway]{Reg};
+  }
+  % WB of add is at column 5 row0; reads (ID) of following instrs at column 2..5 row1..4
+  \draw[->,thick,red] (5,0) -- (2.5,0.65);
+  \draw[->,thick,red] (5,0) -- (3.5,1.65);
+  \draw[->,thick,red] (5,0) -- (4.5,2.65);
+  \draw[->,thick,red] (5,0) -- (5.5,3.65);
+\end{tikzpicture}
+\end{center}
+Without forwarding, \texttt{add}'s result is only available (written back)
+after its WB stage, but \texttt{sub} needs \texttt{r1} in its ID stage one
+cycle earlier -- a RAW hazard.
+
+% ==========================================================================
+\subsection{Minimizing Data Hazard Stalls by Forwarding}
+
+\begin{definition}[Forwarding]
+\textbf{Forwarding} (a.k.a.\ \emph{register bypassing} or
+\emph{short-circuiting}) is a hardware-based technique used to eliminate or
+minimize data-hazard stalls. The result of an instruction is copied directly
+from where it is produced (ALU output, memory read port, etc.) to where a
+subsequent instruction needs it (ALU input register, memory write port,
+etc.), \emph{without} waiting for it to be written to and re-read from the
+register file.
+\end{definition}
+
+In the MIPS integer pipeline with forwarding:
+\begin{itemize}
+  \item The \textbf{ALU result} from the EX/MEM register may be forwarded
+  back to the ALU input latches instead of the register value read in ID.
+  \item The \textbf{Data Memory result} from the MEM/WB register may also be
+  forwarded to the ALU input latches.
+  \item If the forwarding hardware detects that a previous ALU operation
+  will write the register that is a source for the current ALU operation,
+  control logic selects the forwarded result as the ALU input instead of the
+  value read from the register file.
+\end{itemize}
+
+\subsubsection{Datapath modified for forwarding}
+
+\begin{center}
+\begin{tikzpicture}[
+  font=\scriptsize,
+  block/.style={draw,fill=blue!10,minimum height=1.1cm,align=center},
+  reg/.style={draw,fill=green!30,minimum width=0.18cm,minimum height=4.6cm},
+  mux/.style={draw,trapezium,trapezium angle=70,minimum height=0.5cm,fill=yellow!30,shape border rotate=90},
+  >=Stealth]
+  \foreach \x/\lab in {2.3/ID{/}EX,5.4/EX{/}MEM,8.7/MEM{/}WB}{
+    \draw[reg] (\x,-4.9) rectangle ++(0.18,4.6);
+    \node[above] at (\x+0.1,-0.1) {\lab};
+  }
+  \node[block,minimum width=1.7cm] (rf) at (0.6,-2.3) {Register\\File};
+  \node[mux] (m1) at (2.9,-1.6) {mux};
+  \node[mux] (m2) at (2.9,-3.0) {mux};
+  \node[draw,fill=yellow!40,minimum width=0.9cm,minimum height=1.1cm] (alu) at (4.2,-2.3) {ALU};
+  \node[block,minimum width=1.6cm] (dm) at (6.7,-2.3) {Data\\Mem};
+  \node[mux] (m3) at (9.6,-2.3) {mux};
+
+  \draw[->] (rf.east) -- (m1.west);
+  \draw[->] (m1.east) -- (alu.north west);
+  \draw[->] (m2.east) -- (alu.south west);
+  \draw[->] (alu.east) -- ++(0.6,0) |- (dm.west);
+  \draw[->] (dm.east) -- (m3.west);
+
+  % forwarding paths (red)
+  \draw[->,red,thick] (alu.north) .. controls +(0,1.3) and +(0,1.3) .. (m1.north);
+  \draw[->,red,thick] (alu.north) .. controls +(0.4,1.7) and +(-0.4,1.7) .. (m2.north);
+  \draw[->,red,thick] (dm.north) .. controls +(0,2.4) and +(0.4,2.4) .. (m1.north east);
+  \draw[->,red,thick] (dm.north) .. controls +(0,2.8) and +(-0.2,2.8) .. (m2.north east);
+  \draw[->,red,thick] (m3.south) -- ++(0,-0.8) -| ++(-9.6,0) -- (rf.south);
+\end{tikzpicture}
+\end{center}
+Red paths show the EX/MEM $\to$ ALU-input and MEM/WB $\to$ ALU-input
+forwarding routes, plus the normal write-back path to the register file.
+
+\subsubsection{Forwarding to avoid the RAW hazard}
+
+\begin{center}
+\begin{tikzpicture}[x=1.35cm,y=-1.0cm,font=\scriptsize]
+  \foreach \i/\row/\name in {0/0/{add r1,r2,r3},1/1/{sub r4,r1,r3},2/2/{and r6,r1,r7},3/3/{or r8,r1,r9},4/4/{xor r10,r1,r11}}{
+    \node[left,anchor=east] at (-0.2,\row) {\texttt{\name}};
+    \draw[fill=blue!8] (\i+0,\row-0.35) rectangle ++(1,0.7) node[midway]{fetch};
+    \draw[fill=green!25] (\i+1,\row-0.35) rectangle ++(1,0.7) node[midway]{Reg};
+    \draw[fill=blue!8] (\i+2,\row-0.35) rectangle ++(1,0.7) node[midway]{ALU};
+    \draw[fill=blue!8] (\i+3,\row-0.35) rectangle ++(1,0.7) node[midway]{DMem};
+    \draw[fill=orange!35] (\i+4,\row-0.35) rectangle ++(1,0.7) node[midway]{Reg};
+  }
+  \draw[->,thick,red] (3,0) -- (2.5,1.65); % ALU result of add (end of EX, col3) -> ALU input of sub (col2..3 row1)
+\end{tikzpicture}
+\end{center}
+The ALU result of \texttt{add} is forwarded directly into the ALU input of
+\texttt{sub} in the very next cycle -- no stall needed.
+
+\subsubsection{Forwarding to avoid an LW--SW data hazard}
+
+\begin{lstlisting}
+add r1,r2,r3
+lw  r4,0(r1)
+sw  r4,12(r1)
+or  r8,r6,r9
+xor r10,r9,r11
+\end{lstlisting}
+\begin{note}
+The value loaded by \texttt{lw} into \texttt{r4} is forwarded from the
+MEM/WB register directly to the \texttt{sw}'s store-data input, avoiding a
+stall.
+\end{note}
+
+% ==========================================================================
+\subsection{Data Hazard Even With Forwarding: the Load-Use Hazard}
+
+\begin{remark}
+Some hazards \emph{cannot} be resolved by forwarding alone, because the
+needed value is not produced early enough.
+\end{remark}
+
+\begin{lstlisting}
+lw  r1, 0(r2)
+sub r4, r1, r6
+and r6, r1, r7
+or  r8, r1, r9
+\end{lstlisting}
+
+\texttt{lw} produces \texttt{r1} at the \emph{end of its MEM stage} (cycle
+4), but \texttt{sub} needs it as an ALU input at the \emph{start of its EX
+stage} (cycle 3) -- one cycle too early even with forwarding. A single
+stall cycle (bubble) must be inserted:
+
+\begin{center}
+\begin{tikzpicture}[x=1.35cm,y=-1.0cm,font=\scriptsize]
+  \node[left,anchor=east] at (-0.2,0) {\texttt{lw r1,0(r2)}};
+  \draw[fill=blue!8] (0,-0.35) rectangle ++(1,0.7) node[midway]{fetch};
+  \draw[fill=green!25] (1,-0.35) rectangle ++(1,0.7) node[midway]{Reg};
+  \draw[fill=blue!8] (2,-0.35) rectangle ++(1,0.7) node[midway]{ALU};
+  \draw[fill=blue!8] (3,-0.35) rectangle ++(1,0.7) node[midway]{DMem};
+  \draw[fill=orange!35] (4,-0.35) rectangle ++(1,0.7) node[midway]{Reg};
+
+  \node[left,anchor=east] at (-0.2,1) {\texttt{sub r4,r1,r6}};
+  \draw[fill=blue!8] (1,0.65) rectangle ++(1,0.7) node[midway]{fetch};
+  \draw[fill=green!25] (2,0.65) rectangle ++(1,0.7) node[midway]{Reg};
+  \draw[fill=cyan!20,draw=cyan!60!black] (3,0.65) rectangle ++(1,0.7) node[midway]{bubble};
+  \draw[fill=blue!8] (4,0.65) rectangle ++(1,0.7) node[midway]{ALU};
+  \draw[fill=blue!8] (5,0.65) rectangle ++(1,0.7) node[midway]{DMem};
+  \draw[fill=orange!35] (6,0.65) rectangle ++(1,0.7) node[midway]{Reg};
+
+  \node[left,anchor=east] at (-0.2,2) {\texttt{and r6,r1,r7}};
+  \draw[fill=cyan!20,draw=cyan!60!black] (2,1.65) rectangle ++(1,0.7) node[midway]{bubble};
+  \draw[fill=blue!8] (3,1.65) rectangle ++(1,0.7) node[midway]{fetch};
+  \draw[fill=green!25] (4,1.65) rectangle ++(1,0.7) node[midway]{Reg};
+  \draw[fill=blue!8] (5,1.65) rectangle ++(1,0.7) node[midway]{ALU};
+  \draw[fill=blue!8] (6,1.65) rectangle ++(1,0.7) node[midway]{DMem};
+
+  \node[left,anchor=east] at (-0.2,3) {\texttt{or r8,r1,r9}};
+  \draw[fill=cyan!20,draw=cyan!60!black] (3,2.65) rectangle ++(1,0.7) node[midway]{bubble};
+  \draw[fill=blue!8] (4,2.65) rectangle ++(1,0.7) node[midway]{fetch};
+  \draw[fill=green!25] (5,2.65) rectangle ++(1,0.7) node[midway]{Reg};
+  \draw[fill=blue!8] (6,2.65) rectangle ++(1,0.7) node[midway]{ALU};
+
+  \draw[->,thick,red] (4,-0.35) -- (3.5,1.35); % DMem end of lw -> ALU of sub (after bubble)
+\end{tikzpicture}
+\end{center}
+
+\subsubsection{Hardware pipeline interlocks}
+
+\begin{definition}[Pipeline interlock]
+A \textbf{hardware pipeline interlock} detects a data hazard and stalls the
+pipeline until the hazard clears. The CPI for the stalled instruction
+increases by the length of the stall.
+\end{definition}
+
+\begin{lstlisting}[caption={No hazard (ideal)}]
+              c1    c2    c3    c4    c5    c6    c7    c8    c9
+LW  R1,0(R1)  IF    ID    EX    MEM   WB
+SUB R4,R1,R5        IF    ID    EX    MEM   WB
+AND R6,R1,R7              IF    ID    EX    MEM   WB
+OR  R8,R1,R9                    IF    ID    EX    MEM   WB
+\end{lstlisting}
+\begin{lstlisting}[caption={Load-use hazard: interlock inserts one stall, then forwards}]
+              c1    c2    c3    c4    c5    c6    c7    c8    c9
+LW  R1,0(R1)  IF    ID    EX    MEM   WB
+SUB R4,R1,R5        IF    ID    stall EX    MEM   WB
+AND R6,R1,R7              IF    stall ID    EX    MEM   WB
+OR  R8,R1,R9                    stall IF    ID    EX    MEM   WB
+\end{lstlisting}
+
+\subsubsection{Data hazards and the compiler}
+
+\begin{definition}[Pipeline (instruction) scheduling]
+The compiler can help eliminate some hazard-induced stalls: it should avoid
+generating a \texttt{LOAD} instruction immediately followed by an
+instruction that uses the load's destination register. This technique is
+called \textbf{pipeline / instruction scheduling}.
+\end{definition}
+
+\begin{center}
+\begin{tabular}{@{}p{3.4cm}p{4.3cm}p{5.6cm}@{}}
+\toprule
+Situation & Example & Action \\
+\midrule
+No dependence &
+\texttt{LW R1,45(R2)}\newline\texttt{ADD R5,R6,R7}\newline\texttt{SUB R8,R6,R7}\newline\texttt{OR R9,R6,R7} &
+No hazard possible: no dependence on R1 in the following three instructions.\\[4pt]
+Dependence requiring stall &
+\texttt{LW R1,45(R2)}\newline\texttt{ADD R5,R1,R7}\newline\texttt{SUB R8,R6,R7}\newline\texttt{OR R9,R6,R7} &
+Comparators detect the use of R1 in ADD and stall ADD (and SUB, OR) before ADD begins EX.\\[4pt]
+Dependence overcome by forwarding &
+\texttt{LW R1,45(R2)}\newline\texttt{ADD R5,R6,R7}\newline\texttt{SUB R8,R1,R7}\newline\texttt{OR R9,R6,R7} &
+Comparators detect the use of R1 in SUB and forward the LOAD result to the ALU in time for SUB's EX.\\[4pt]
+Dependence with accesses in order &
+\texttt{LW R1,45(R2)}\newline\texttt{ADD R5,R6,R7}\newline\texttt{SUB R8,R6,R7}\newline\texttt{OR R9,R1,R7} &
+No action required: the read of R1 by OR occurs in the 2nd half of ID, after the write of the loaded data in the 1st half.\\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\subsubsection{Static compiler instruction scheduling example}
+
+\begin{note}
+\emph{Static} = at compilation time, by the compiler. \emph{Dynamic} = at
+run time, by hardware in the CPU.
+\end{note}
+
+\begin{eg}[Scheduling \texttt{a = b + c; d = e - f;}]
+For \texttt{a = b + c;\ d = e - f;} (a,b,c,d,e,f in memory), assuming loads
+have a latency of 1 cycle:
+
+\begin{center}
+\begin{minipage}{0.46\linewidth}
+\textbf{Original code (2 stalls):}
+\begin{lstlisting}
+LW  Rb, b
+LW  Rc, c
+ADD Ra,Rb,Rc  (*stall*)
+SW  Ra, a
+LW  Re, e
+LW  Rf, f
+SUB Rd,Re,Rf  (*stall*)
+SW  Rd, d
+\end{lstlisting}
+\end{minipage}\hfill
+\begin{minipage}{0.46\linewidth}
+\textbf{Scheduled code (no stalls):}
+\begin{lstlisting}
+LW  Rb, b
+LW  Rc, c
+LW  Re, e
+ADD Ra,Rb,Rc
+LW  Rf, f
+SW  Ra, a
+SUB Rd,Re,Rf
+SW  Rd, d
+\end{lstlisting}
+\end{minipage}
+\end{center}
+
+\end{eg}
+
+\subsubsection{Performance of pipelines with stalls}
+
+\[
+  \mathrm{CPI}_{\text{pipelined}} = \text{Ideal CPI} + \text{pipeline stall cycles/instr.} = 1 + \text{stall cycles/instr.}
+\]
+\[
+  \text{Speedup} = \frac{\mathrm{CPI}_{\text{unpipelined}}}{1+\text{pipeline stall cycles/instr.}}
+\]
+When all instructions in the multi-cycle CPU take the same number of cycles
+(equal to the number of pipeline stages):
+\[
+  \text{Speedup} = \frac{\text{Pipeline depth}}{1+\text{pipeline stall cycles/instr.}}
+\]
+
+% ==========================================================================
+\subsection{Control Hazards}
+
+\begin{definition}[Control hazard]
+When a conditional branch executes, it may change the PC; without special
+measures this stalls the pipeline for a number of cycles until the branch
+condition is known (the \emph{branch is resolved}) -- otherwise the PC may
+not be correct when needed in IF.
+\end{definition}
+
+In the (unmodified) MIPS pipeline, the conditional branch is resolved in
+stage 4 (MEM), giving \textbf{3 stall cycles}:
+
+\begin{lstlisting}
+             c1    c2    c3    c4    c5    c6    c7    c8    c9    c10
+Branch       IF    ID    EX    MEM   WB
+Successor          stall stall stall IF    ID    EX    MEM   WB
+Successor+1                                IF    ID    EX    MEM   WB
+\end{lstlisting}
+\begin{prop}[Branch penalty]
+\[
+  \text{Branch Penalty} = (\text{stage where branch is resolved}) - 1 = 4-1 = 3 \text{ cycles}
+\]
+\end{prop}
+
+\subsubsection{Control hazard on branches -- three-stage stall (illustration)}
+
+\begin{lstlisting}
+12: beq r1,r3,36
+16: and r2,r3,r5   -- squashed if branch taken
+20: or  r6,r1,r7   -- squashed if branch taken
+24: add r8,r1,r9   -- squashed if branch taken
+36: xor r10,r1,r11 -- branch target
+\end{lstlisting}
+If the branch at PC 12 is taken, the three sequentially-fetched instructions
+at 16, 20, 24 must be discarded (squashed) once the branch outcome is known
+in MEM, and the target instruction at 36 is fetched instead.
+
+\subsubsection{Reducing branch stall cycles}
+
+Two hardware measures reduce the branch penalty:
+\begin{enumerate}
+  \item Find out whether a branch is taken \emph{earlier} in the pipeline.
+  \item Compute the taken-branch target PC \emph{earlier} in the pipeline.
+\end{enumerate}
+
+In MIPS, branch instructions (\texttt{BEQZ}, \texttt{BNE}, \dots) test a
+register for equality to zero. This zero-test can be moved into the ID
+cycle, and both PCs (taken and not-taken) computed early using an
+\textbf{additional adder} (the ALU is not usable until EX). This reduces the
+branch penalty to \textbf{just 1 stall cycle}.
+
+\begin{center}
+\begin{tikzpicture}[
+  font=\scriptsize,
+  block/.style={draw,fill=blue!10,minimum height=1.0cm,align=center},
+  >=Stealth]
+  \node[block,minimum width=1.1cm] (pc) at (0,-2.0) {PC};
+  \node[block,minimum width=1.5cm] (im) at (1.4,-3.0) {Inst.\ Mem};
+  \node[block,fill=red!15,minimum width=1.3cm] (add2) at (3.0,-1.0) {Adder};
+  \node[block,fill=red!15,minimum width=0.9cm] (zero) at (4.6,-1.0) {Zero?};
+  \node[block,minimum width=1.6cm] (rf) at (3.0,-2.6) {Register\\File};
+  \draw[->] (pc) -- (im);
+  \draw[->,red] (im.north) |- (add2.west);
+  \draw[->,red] (add2) -- (zero);
+  \draw[->,red] (zero.north) -- ++(0,0.5) -| ($(pc.north)+(0,1.6)$) -- (pc.north);
+  \draw[->] (im.east) -- ++(0.4,0) |- (rf.west);
+\end{tikzpicture}
+\end{center}
+{\small \emph{Modified MIPS pipeline: conditional branch completed in the ID
+stage; branch penalty $=2-1=1$ cycle.}}
+
+\subsubsection{Branch stall impact}
+
+\begin{eg}[Impact of a 3-cycle branch stall]
+If CPI $=1$ and $30\%$ of instructions are branches with a 3-cycle stall:
+new CPI $= 1 + 0.30\times3 = 1.9$ -- almost double! Reducing the penalty to
+1 cycle (MIPS solution above) is therefore very valuable.
+\end{eg}
+
+% ==========================================================================
+\subsection{Four Branch Hazard Alternatives}
+
+\subsubsection{\#1: Stall until branch direction is clear}
+Simplest, but wastes cycles as shown above.
+
+\subsubsection{\#2: Predict Branch Not Taken (most common)}
+\begin{itemize}
+  \item Execute successor instructions in sequence.
+  \item ``Squash'' instructions in the pipeline if the branch is actually
+  taken.
+  \item Advantage: late pipeline state update (nothing irrevocable has
+  happened yet).
+  \item About $47\%$ of MIPS branches are not taken on average.
+  \item $PC+4$ is already calculated, so it is used to fetch the next
+  instruction.
+\end{itemize}
+
+\textbf{Predict-not-taken timing (branch penalty $=1$ cycle, ID-stage resolution).}
+\begin{lstlisting}[caption={Not taken (no stall)}]
+                c1    c2    c3    c4    c5    c6    c7
+Untaken branch  IF    ID    EX    MEM   WB
+Instr i+1             IF    ID    EX    MEM   WB
+Instr i+2                   IF    ID    EX    MEM   WB
+\end{lstlisting}
+\begin{lstlisting}[caption={Taken (1 idle cycle)}]
+                c1    c2    c3    c4    c5    c6    c7
+Taken branch    IF    ID    EX    MEM   WB
+Instr i+1             IF    idle  idle  idle  idle
+Branch target               IF    ID    EX    MEM   WB
+\end{lstlisting}
+\begin{prop}[Branch stall cycles]
+\[
+  \text{Pipeline stall cycles from branches} = \text{frequency of taken branches} \times \text{branch penalty}
+\]
+\end{prop}
+
+\subsubsection{\#3: Predict Branch Taken}
+\begin{itemize}
+  \item About $53\%$ of MIPS branches are taken on average.
+  \item But (in the basic MIPS pipeline) the branch target address hasn't
+  been calculated yet, so MIPS still incurs a 1-cycle branch penalty even
+  with this scheme (other machines that know the branch target before the
+  outcome can benefit more).
+\end{itemize}
+
+\subsubsection{\#4: Delayed Branch}
+
+\begin{definition}[Delayed branch]
+Define the branch to take place \emph{after} a following instruction:
+\begin{lstlisting}
+branch instruction
+  sequential successor 1  <- branch delay slot(s)
+  ...
+  sequential successor n
+branch target if taken
+\end{lstlisting}
+A single delay slot suffices for proper branch-decision and branch-target
+computation in a 5-stage pipeline. \textbf{MIPS uses this.}
+\end{definition}
+
+\textbf{Delayed branch timing (no stalls, whether or not taken).}
+\begin{lstlisting}
+                c1    c2    c3    c4    c5    c6    c7
+Untaken branch  IF    ID    EX    MEM   WB
+Delay slot i+1        IF    ID    EX    MEM   WB
+Instr i+2                   IF    ID    EX    MEM   WB
+\end{lstlisting}
+\begin{lstlisting}
+                c1    c2    c3    c4    c5    c6    c7
+Taken branch    IF    ID    EX    MEM   WB
+Delay slot i+1        IF    ID    EX    MEM   WB
+Branch target               IF    ID    EX    MEM   WB
+\end{lstlisting}
+The behaviour of the delay-slot instruction is the same whether or not the
+branch is taken.
+
+\subsubsection{Scheduling branch delay slots}
+
+\begin{center}
+\begin{tabular}{@{}p{4.6cm}p{4.6cm}p{4.6cm}@{}}
+\toprule
+\textbf{A. From before branch} & \textbf{B. From branch target} & \textbf{C. From fall-through} \\
+\midrule
+\begin{lstlisting}
+add $1,$2,$3
+if $2=0 then
+  (delay slot)
+\end{lstlisting}
+becomes
+\begin{lstlisting}
+if $2=0 then
+  add $1,$2,$3
+\end{lstlisting}
+&
+\begin{lstlisting}
+sub $4,$5,$6
+add $1,$2,$3
+if $1=0 then
+  (delay slot)
+\end{lstlisting}
+becomes
+\begin{lstlisting}
+sub $4,$5,$6
+add $1,$2,$3
+if $1=0 then
+  sub $4,$5,$6
+\end{lstlisting}
+&
+\begin{lstlisting}
+add $1,$2,$3
+if $1=0 then
+  (delay slot)
+or  $7,$8,$9
+sub $4,$5,$6
+\end{lstlisting}
+becomes
+\begin{lstlisting}
+add $1,$2,$3
+if $1=0 then
+  or $7,$8,$9
+sub $4,$5,$6
+\end{lstlisting}
+\\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\begin{itemize}
+  \item \textbf{A} is the best choice: it always improves performance
+  (fills the delay slot without duplicating any instruction, reducing
+  instruction count). The branch must not depend on the rescheduled
+  instruction.
+  \item In \textbf{B}, the moved instruction may need to be \emph{copied},
+  increasing instruction count; it must be safe to execute even if the
+  branch is not taken.
+  \item In \textbf{C}, the instruction must be safe to execute even if the
+  branch \emph{is} taken.
+\end{itemize}
+
+\textbf{Three cases for choosing the delay-slot instruction.}
+\begin{description}[leftmargin=2.2cm,style=nextline]
+  \item[A -- independent instruction from before the branch (\emph{common})]
+  Always improves performance when used; the branch must not depend on the
+  rescheduled instruction.
+  \item[B -- instruction from the branch target] Improves performance if
+  the branch is taken; may require duplication; must be safe if the branch
+  is \emph{not} taken.
+  \item[C -- instruction from the fall-through stream] Improves performance
+  if the branch is \emph{not} taken; must be safe if the branch \emph{is}
+  taken.
+\end{description}
+\begin{remark}
+The usability of cases B and C is improved by using a \textbf{canceling
+(nullifying) branch}.
+\end{remark}
+
+\subsubsection{Delayed branch: compiler effectiveness}
+
+\begin{itemize}
+  \item Fills about $60\%$ of branch delay slots.
+  \item About $80\%$ of instructions placed in delay slots are useful.
+  \item $\Rightarrow$ about $50\%$ ($60\%\times80\%$) of slots are
+  \emph{usefully} filled.
+\end{itemize}
+\begin{remark}
+\textbf{Downside:} as processors move to deeper pipelines and multiple
+issue, the branch delay grows and more than one delay slot is needed.
+Delayed branching has lost popularity relative to more flexible (but more
+expensive) dynamic approaches, since growth in available transistors has
+made dynamic branch prediction relatively cheaper.
+\end{remark}
+
+\subsubsection{Evaluating branch alternatives}
+
+\begin{prop}[Pipeline speedup with branches]
+\[
+  \text{Pipeline speedup} = \frac{\text{Pipeline depth}}{1+\text{Branch frequency} \times \text{Branch penalty}}
+\]
+\end{prop}
+
+\begin{eg}[Comparing branch schemes]
+Assume: $4\%$ unconditional branches, $6\%$ conditional-untaken, $10\%$
+conditional-taken.
+
+\begin{center}
+\begin{tabular}{@{}lccccc@{}}
+\toprule
+Scheduling scheme & Branch penalty & CPI & Speedup v.\ unpipelined & Speedup v.\ stall \\
+\midrule
+Stall pipeline    & 3                         & 1.60 & 3.1 & 1.00 \\
+Predict not taken & $1{\times}0.04+3{\times}0.10$ & 1.34 & 3.7 & 1.19 \\
+Predict taken     & $1{\times}0.14+2{\times}0.06$ & 1.26 & 4.0 & 1.29 \\
+Delayed branch    & 0.5                       & 1.10 & 4.5 & 1.45 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\end{eg}
+
+\subsubsection{Pipeline performance example}
+
+\begin{eg}[CPI of a realistic mix]
+MIPS instruction mix:
+
+\begin{center}
+\begin{tabular}{@{}lp{9.5cm}@{}}
+\toprule
+Type & Frequency \\
+\midrule
+Arith/Logic & 40\% \\
+Load        & 30\% (of which 25\% are immediately followed by an instruction using the loaded value) \\
+Store       & 10\% \\
+Branch      & 20\% (of which 45\% are taken) \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+With forwarding and branch-address calculation in the ID stage, using a
+branch-not-taken scheme (branch penalty $=1$ cycle):
+\[
+  \mathrm{CPI} = 1 + \underbrace{0.3\times0.25\times1}_{\text{load-use stalls}} + \underbrace{0.2\times0.45\times1}_{\text{branch stalls}} = 1 + 0.075 + 0.09 = 1.165
+\]
+\end{eg}
+
+% ==========================================================================
+\subsection{Exercises}
+
+Left unresolved for self-study.
+
+\begin{exercise}[Hazards, NOPs and forwarding]
+Consider the following instruction sequence, to be executed on the standard
+5-stage MIPS pipeline (IF, ID, EX, MEM, WB), assuming registers are written
+in the first half of a cycle and read in the second half:
+
+\begin{lstlisting}
+(1) lw  $1, 40($6)
+(2) add $6, $2, $2
+(3) sw  $6, 50($1)
+(4) add $4, $5, $6
+(5) lw  $6, 10($4)
+\end{lstlisting}
+
+Answer the following, showing your reasoning and/or a pipeline diagram for
+each part:
+
+\begin{enumerate}[label=(\Alph*)]
+  \item Identify \emph{all} the data dependencies in the code above (which
+  instruction depends on which, and through which register).
+  \item Assuming the pipeline has \emph{no} forwarding hardware, identify
+  which of the dependencies found in (A) actually cause data hazards
+  (i.e.\ where a read would happen before the corresponding write in the
+  unmodified pipeline).
+  \item Show the code with explicit \texttt{NOP} (no-op) instructions
+  inserted so that it executes correctly \emph{without} forwarding
+  hardware.
+  \item How many clock cycles does the code from part (C) take to execute?
+  \item Now assume the pipeline \emph{does} have full forwarding hardware
+  (forwarding NOPs are inserted only where forwarding cannot resolve the
+  hazard). How many clock cycles does the original code take to execute
+  with forwarding? Identify which specific forwarding paths (EX/MEM
+  $\to$ EX, MEM/WB $\to$ EX, etc.) are used, and in which cycle.
+\end{enumerate}
+\end{exercise}
+
+% ==========================================================================
+\subsection{Summary}
+
+\begin{itemize}[leftmargin=*]
+  \item Pipelining overlaps the execution of multiple instructions.
+  \item With an \emph{ideal} pipeline, CPI $=1$, and speedup equals the
+  number of pipeline stages.
+  \item Several factors prevent the ideal speedup from being reached:
+  \begin{itemize}
+    \item Not being able to divide the pipeline evenly.
+    \item The time needed to fill and drain the pipeline.
+    \item Overhead needed for pipelining (extra latches/control).
+    \item Structural, data, and control hazards.
+  \end{itemize}
+  \item Pipelining is easy when tasks are independent -- just overlap them.
+\end{itemize}
+
+\[
+  \text{Speedup} = \frac{\text{Pipeline Depth}}{1+\text{Pipeline stall CPI}} \times \frac{\text{Clock Cycle Unpipelined}}{\text{Clock Cycle Pipelined}}
+  \qquad (\text{if ideal CPI}=1)
+\]
+
+\begin{itemize}[leftmargin=*]
+  \item \textbf{Hazards limit performance:}
+  \begin{itemize}
+    \item Structural: need more hardware resources.
+    \item Data: need forwarding, compiler scheduling.
+    \item Control: early evaluation \& PC computation, delayed branch,
+    branch prediction.
+  \end{itemize}
+  \item Increasing pipeline length increases the impact of hazards;
+  pipelining helps instruction \emph{bandwidth}, not \emph{latency}.
+  \item Compilers help reduce the cost of data and control hazards via:
+  load delay-slot scheduling, branch delay-slot scheduling, and branch
+  prediction.
+\end{itemize}

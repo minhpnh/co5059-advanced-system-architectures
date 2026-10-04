@@ -1,0 +1,696 @@
+% !TeX program = xelatex
+\documentclass[11pt]{article}
+\newcommand{\notesdir}{../../lecture-notes}
+\input{../../lecture-notes/preamble}
+
+\newcommand{\enc}[2]{\par{\centering\texttt{#1} $=$ \texttt{#2}\par}}
+% R/I/J bit-field helper:  \fields{label/width,...}
+\newcommand{\fieldrow}[1]{%
+  \begin{tikzpicture}[font=\scriptsize]
+    \foreach \lab/\w [remember=\x as \lastx (initially 0)] in {#1}{
+      \pgfmathsetmacro{\x}{\lastx+\w}
+      \draw[fill=brandsecondary!10] (\lastx*0.3,0) rectangle (\x*0.3,0.6)
+        node[midway]{\lab};
+    }
+  \end{tikzpicture}}
+
+\begin{document}
+\sloppy
+\makecover{Quiz Review: Instruction Sets}{Lecture 2 -- ISA styles,
+addressing modes, CISC vs.\ RISC, MIPS encoding, procedure calls. A cheat
+sheet, the slide exercises with solutions, exam-style questions, and extra
+practice problems -- with solutions at the end.}
+
+% ============================================================================
+\section{Cheat Sheet}
+
+\subsection{ISA styles: $C = A + B$}
+\begin{center}
+\small
+\begin{tabular}{@{}lp{4.6cm}p{5.2cm}@{}}
+\toprule
+Style & Code & Pros / cons \\
+\midrule
+Stack & \texttt{PUSH A; PUSH B; ADD; POP C} & + dense code, simple HW; -- stack is a bottleneck, little parallelism \\
+Accumulator & \texttt{LOAD A; ADD B; STORE C} & + few instructions, easy compiler; -- heavy memory traffic, variable CPI \\
+Memory-memory & \texttt{ADD C, A, B} & + simple to understand; -- every operand is a memory access \\
+Register-memory & \texttt{LOAD R1,A; ADD R3,R1,B; STORE R3,C} & one operand may be in memory (x86, 68000, VAX) \\
+Load-store (reg-reg) & \texttt{LOAD R1,A; LOAD R2,B; ADD R3,R1,R2; STORE R3,C} & only loads/stores touch memory (MIPS, ARM, PowerPC, Alpha) \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\subsection{Addressing modes}
+\begin{center}
+\small
+\begin{tabular}{@{}lll@{}}
+\toprule
+Mode & Meaning & MIPS example \\
+\midrule
+Immediate & operand is in the instruction & \texttt{addi \$t0,\$t1,5} \\
+Register & operand is in a register & \texttt{add \$t0,\$t1,\$t2} \\
+Displacement (base) & $M[\text{reg} + \text{const}]$ & \texttt{lw \$t0,8(\$sp)} \\
+Register indirect & $M[\text{reg}]$ (or PC $=$ reg) & \texttt{lw \$t0,0(\$a0)}, \texttt{jr \$ra} \\
+PC-relative & target $=$ PC$+4+4\cdot$offset & \texttt{beq \$t0,\$t1,L} \\
+Pseudo-direct & target $= \{\text{PC}{+}4[31{:}28],\ \text{addr},\ 00\}$ & \texttt{j L}, \texttt{jal f} \\
+Direct, indexed, memory indirect, scaled & not in MIPS & e.g.\ \texttt{M[M[r2]]} \\
+\bottomrule
+\end{tabular}
+\end{center}
+Measured usage: \textbf{immediate and displacement dominate}; most
+displacements and immediates fit in 16 bits.
+
+\subsection{MIPS instruction formats}
+\begin{center}
+\begin{tabular}{@{}rl@{}}
+R: & \fieldrow{opcode/6,rs/5,rt/5,rd/5,shamt/5,funct/6} \\[2pt]
+I: & \fieldrow{opcode/6,rs/5,rt/5,immediate/16} \\[2pt]
+J: & \fieldrow{opcode/6,address/26} \\
+\end{tabular}
+\end{center}
+Bit positions: opcode 31--26, rs 25--21, rt 20--16, rd 15--11, shamt 10--6,
+funct 5--0, immediate 15--0, address 25--0. In I-format \texttt{rt} is the
+\emph{destination} (or the value stored by \texttt{sw}).
+
+\subsection{Encoding recipe}
+\begin{enumerate}[leftmargin=*]
+  \item Look up opcode (and funct for R-format; opcode is \texttt{0}).
+  \item Write register numbers (5 bits each) in the order \textbf{rs, rt,
+  rd}. Note: in assembly \texttt{add rd, rs, rt} lists rd first.
+  \item Immediates: 16-bit two's complement (negative: invert and add 1).
+  \item Branch offset $= (\text{target} - (\text{PC}+4))/4$ in words.
+  Jump field $= (\text{target} \gg 2)$ \& \texttt{0x3FFFFFF}.
+  \item Group the 32 bits into nibbles $\to$ hex.
+\end{enumerate}
+
+\begin{center}
+\small
+\begin{tabular}{@{}llll@{}}
+\toprule
+Instr. & opcode / funct (hex) & Instr. & opcode / funct (hex) \\
+\midrule
+\texttt{add}  & 0 / 20 & \texttt{addi} & 08 \\
+\texttt{addu} & 0 / 21 & \texttt{addiu}& 09 \\
+\texttt{sub}  & 0 / 22 & \texttt{andi} & 0c \\
+\texttt{and}  & 0 / 24 & \texttt{ori}  & 0d \\
+\texttt{or}   & 0 / 25 & \texttt{slti} & 0a \\
+\texttt{nor}  & 0 / 27 & \texttt{lui}  & 0f \\
+\texttt{slt}  & 0 / 2a & \texttt{lw}   & 23 \\
+\texttt{sll}  & 0 / 00 & \texttt{sw}   & 2b \\
+\texttt{srl}  & 0 / 02 & \texttt{beq}  & 04 \\
+\texttt{sra}  & 0 / 03 & \texttt{bne}  & 05 \\
+\texttt{jr}   & 0 / 08 & \texttt{j} / \texttt{jal} & 02 / 03 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\subsection{Registers and calling convention}
+\begin{center}
+\small
+\begin{tabular}{@{}llp{5.2cm}c@{}}
+\toprule
+Name & Number & Use & Preserved? \\
+\midrule
+\texttt{\$zero} & 0 & constant 0 & -- \\
+\texttt{\$at} & 1 & assembler temporary & -- \\
+\texttt{\$v0--\$v1} & 2--3 & return values & no \\
+\texttt{\$a0--\$a3} & 4--7 & arguments & no \\
+\texttt{\$t0--\$t7}, \texttt{\$t8--\$t9} & 8--15, 24--25 & temporaries (caller-saved) & no \\
+\texttt{\$s0--\$s7} & 16--23 & saved (callee-saved) & yes \\
+\texttt{\$gp, \$sp, \$fp, \$ra} & 28, 29, 30, 31 & global/stack/frame pointer, return address & yes \\
+\bottomrule
+\end{tabular}
+\end{center}
+\begin{note}
+\texttt{jal f} puts PC$+4$ into \texttt{\$ra}; \texttt{jr \$ra} returns. A
+callee that uses \texttt{\$s} registers or calls another function must save
+them (and \texttt{\$ra}) on the stack; a \emph{leaf} function that does not
+touch \texttt{\$ra}/\texttt{\$s} registers needs no stack frame.
+\end{note}
+
+\subsection{Pseudo-instructions and tricks}
+\begin{center}
+\small
+\begin{tabular}{@{}ll@{}}
+\toprule
+Pseudo / idea & Real instructions \\
+\midrule
+\texttt{move \$t1,\$t0} & \texttt{add \$t1,\$t0,\$zero} \\
+\texttt{li \$t0,100} (fits 16 bits) & \texttt{ori \$t0,\$zero,100} (or \texttt{addi}) \\
+\texttt{li \$t0,0x12345678} & \texttt{lui \$t0,0x1234; ori \$t0,\$t0,0x5678} \\
+\texttt{not \$t0,\$t1} & \texttt{nor \$t0,\$t1,\$zero} \\
+\texttt{blt \$t0,\$t1,L} & \texttt{slt \$at,\$t0,\$t1; bne \$at,\$zero,L} \\
+\texttt{bge \$t0,\$t1,L} & \texttt{slt \$at,\$t0,\$t1; beq \$at,\$zero,L} \\
+\texttt{subi} (doesn't exist) & \texttt{addi} with a negative constant \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\subsection{CISC vs.\ RISC}
+\begin{center}
+\small
+\begin{tabular}{@{}p{7cm}p{7cm}@{}}
+\toprule
+CISC (x86, 680x0, VAX) & RISC (MIPS, SPARC, PowerPC, Alpha) \\
+\midrule
+More work per instruction, fewer instructions & Simple instructions, more of them \\
+Motivated by expensive memory & Designed for pipelining, target CPI $\le 1$ \\
+Variable-length encoding & Fixed-length (32-bit) encoding \\
+Many addressing modes (12--25) & Few modes (immediate, register, displacement, \dots) \\
+Memory operands in ALU instructions & Load-store: only \texttt{lw}/\texttt{sw} access memory \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+% ============================================================================
+\section{Exercises from the Slides (with Solutions)}
+
+\begin{exercise}[Encode an R-format instruction]
+Encode \texttt{add \$t0, \$s1, \$s2}.
+\end{exercise}
+\begin{solution}
+opcode $0$, rs $=$ \texttt{\$s1} $=17$, rt $=$ \texttt{\$s2} $=18$, rd $=$ \texttt{\$t0} $=8$, shamt $0$, funct
+\texttt{0x20}:
+\enc{000000 10001 10010 01000 00000 100000}{0x02324020}
+\end{solution}
+
+\begin{exercise}[Shifts]
+Encode \texttt{sll \$t2,\$s0,8} and \texttt{sra \$t2,\$s0,8}. Why is there no
+\texttt{sla}, and how is \texttt{NOT} done?
+\end{exercise}
+\begin{solution}
+Shifts use rt as source and shamt as the amount; rs $=0$.
+\texttt{sll}: \enc{000000 00000 10000 01010 01000 000000}{0x00105200}
+\texttt{sra}: same with funct \texttt{000011} $=$ \texttt{0x00105203}.
+A left arithmetic shift would be identical to \texttt{sll} (zeros enter from
+the right either way), so it is not needed. \texttt{NOT} is
+\texttt{nor \$t0,\$t1,\$zero}.
+\end{solution}
+
+\begin{exercise}[I-format arithmetic and logical]
+Encode \texttt{addi \$t0,\$t1,0x0005} and
+\texttt{ori \$t0,\$t1,0xFF00}. Why is there no \texttt{subi}?
+\end{exercise}
+\begin{solution}
+rs $=$ \texttt{\$t1} $=9$, rt $=$ \texttt{\$t0} $=8$.
+\texttt{addi}: \enc{001000 01001 01000 0000000000000101}{0x21280005}
+\texttt{ori}: \enc{001101 01001 01000 1111111100000000}{0x3528FF00}
+\texttt{subi} is unnecessary: \texttt{addi} with a negative (sign-extended)
+immediate does the same job.
+\end{solution}
+
+\begin{exercise}[Loads and stores]
+Encode \texttt{lw \$t0,16(\$t1)} and \texttt{sw \$t0,16(\$t1)}.
+\end{exercise}
+\begin{solution}
+rs $=$ base \texttt{\$t1} $=9$, rt $=$ \texttt{\$t0} $=8$, imm $=16$.
+\texttt{lw}: \enc{100011 01001 01000 0000000000010000}{0x8D280010}
+\texttt{sw}: opcode \texttt{101011} $\Rightarrow$ \texttt{0xAD280010}.
+\end{solution}
+
+\begin{exercise}[Branch]
+Encode \texttt{beq \$s0,\$s1,256} (offset field $=256$).
+\end{exercise}
+\begin{solution}
+Encoding:
+\enc{000100 10000 10001 0000000100000000}{0x12110100}
+The target is PC$+4+256\times4$ = PC$+4+1024$.
+\end{solution}
+
+\begin{exercise}[Jump]
+Encode \texttt{j 0x01000000} as shown on the slide.
+\end{exercise}
+\begin{solution}
+The slide places \texttt{0x01000000} directly in the 26-bit field:
+\enc{000010 01000000000000000000000000}{0x09000000}
+The real target is $\{\text{PC}{+}4[31{:}28],\ \text{field},\ 00\}$, i.e.\
+the field is a \emph{word} address. If you are given a byte target address
+instead, divide it by 4 first (see Practice Problem~\ref{p:jump}).
+\end{solution}
+
+\begin{exercise}[Move without MOV]
+Move \texttt{\$t0} into \texttt{\$t1} with one instruction.
+\end{exercise}
+\begin{solution}
+\texttt{add \$t1,\$t0,\$zero} (\texttt{or \$t1,\$t0,\$zero} or
+\texttt{addi \$t1,\$t0,0} also work).
+\end{solution}
+
+\begin{exercise}[Large constant]
+Load \texttt{0x12345678} into \texttt{\$t0}.
+\end{exercise}
+\begin{solution}
+\texttt{lui \$t0,0x1234} then \texttt{ori \$t0,\$t0,0x5678}. \texttt{ori}
+zero-extends its immediate, so the upper half is not disturbed.
+\end{solution}
+
+\begin{exercise}[Atomic swap with LL/SC]
+Explain the loop
+\texttt{try: add \$t0,\$zero,\$s4; ll \$t1,0(\$s1); sc \$t0,0(\$s1);
+beq \$t0,\$zero,try; add \$s4,\$zero,\$t1}.
+\end{exercise}
+\begin{solution}
+\texttt{ll} reads the old memory value into \texttt{\$t1}. \texttt{sc}
+tries to store \texttt{\$s4}'s copy; it writes 1 into \texttt{\$t0} on
+success, or 0 if the location changed since the \texttt{ll} (another
+processor intervened), in which case the loop retries. On success
+\texttt{\$s4} receives the old value: memory and \texttt{\$s4} have been
+swapped atomically.
+\end{solution}
+
+\begin{exercise}[Procedure-call convention]
+(1) Who saves the return address, caller or callee? (2) Who saves the
+necessary registers? (3) Must a leaf procedure save the return address?
+\end{exercise}
+\begin{solution}
+(1) The caller's \texttt{jal} writes the return address into \texttt{\$ra};
+it is the \textbf{callee} that must preserve it (push \texttt{\$ra} on the
+stack) if the callee itself calls other procedures, because \texttt{\$ra} is
+``preserved across a call''. (2) Both share the work: the \textbf{callee}
+saves the \texttt{\$s} registers it uses (callee-saved); the \textbf{caller}
+saves any \texttt{\$t}/\texttt{\$a}/\texttt{\$v} registers it still needs
+after the call (caller-saved). (3) \textbf{No}: a leaf procedure makes no
+\texttt{jal}, so \texttt{\$ra} is never overwritten and it can return with
+\texttt{jr \$ra} directly.
+\end{solution}
+
+\begin{exercise}[Review quiz]
+(1) In MIPS, \texttt{NOT} is done with: a.\ \texttt{NOT}, b.\ \texttt{NOR},
+c.\ \texttt{NAND}, d.\ none.
+(2) An addressing mode is: a.\ how an operand (or a jump target) is
+referenced, b.\ how memory is organized by byte/halfword/word, c.\
+endianness, d.\ all of these.
+(3) MIPS \texttt{LO}/\texttt{HI} are used for: a.\ low/high addresses, b.\
+multiply/divide, c.\ both, d.\ neither.
+(4) MIPS stores data as: a.\ little-endian, b.\ big-endian, c.\ both, d.\
+no endianness.
+\end{exercise}
+\begin{solution}
+(1) \textbf{b} -- \texttt{nor \$t0,\$t1,\$zero}.
+(2) \textbf{a}.
+(3) \textbf{b} -- \texttt{mult}/\texttt{div} put results in Hi/Lo
+(\texttt{mfhi}/\texttt{mflo} read them).
+(4) \textbf{b} -- big-endian, as stated in the lecture (real MIPS chips can
+be configured either way, but the expected quiz answer is b).
+\end{solution}
+
+\begin{exercise}[C to MIPS]
+Which sequences implement \texttt{if (a==0) a=1; else a=0;}?
+\begin{enumerate}[label=(\Alph*),leftmargin=*]
+  \item \texttt{lw \$t0,a; bne \$t0,\$0,L1; addi \$t0,\$0,1; b L2;}\\
+        \texttt{L1: add \$t0,\$0,\$0; L2: sw \$t0,a}
+  \item \texttt{lw \$t0,a; beq \$t0,\$0,L1; sw \$0,a; b L2;}\\
+        \texttt{L1: addi \$t0,\$0,1; sw \$t0,a; L2:}
+  \item \texttt{lw \$t0,a; sltiu \$t0,\$t0,1; sw \$t0,a}
+  \item \texttt{lw \$t0,a; addi \$t1,\$0,1; beq \$t0,\$0,L1;}\\
+        \texttt{addi \$t1,\$0,0; L1: sw \$t1,a}
+  \item All of the above.
+\end{enumerate}
+\end{exercise}
+\begin{solution}
+\textbf{E}. (A) jumps to L1 when $a\neq0$ and stores 0, otherwise stores 1.
+(B) branches to L1 when $a=0$ and stores 1, otherwise stores \texttt{\$0}.
+(C) \texttt{sltiu} sets \texttt{\$t0} $=1$ iff $a<1$ unsigned, i.e.\ iff
+$a=0$. (D) presets 1 and overwrites it with 0 only when $a\neq0$.
+Caveat: this assumes no branch delay slots (the assembler/simulator
+default). With delay slots exposed, the instruction after every branch
+always executes: in (A) the \texttt{add} after \texttt{b L2} would zero
+\texttt{\$t0} before the store, and in (D) the \texttt{addi \$t1,\$0,0}
+would always run, so both would store 0. (B) and (C) would still be
+correct.
+\end{solution}
+
+% ============================================================================
+\section{Exam-Style Questions}
+
+Multi-part questions in the style of the in-class exercise. Solutions are in
+the last section.
+
+\begin{exercise}[Encoding a loop]\label{x:loop}
+The following code starts at address \texttt{0x00400000}; the label
+\texttt{Done} is at \texttt{0x00400040}.
+\begin{lstlisting}
+0x00400000  Loop: lw   $t1, 0($s0)
+0x00400004        add  $t2, $t2, $t1
+0x00400008        addi $s0, $s0, 4
+0x0040000C        addi $t0, $t0, -1
+0x00400010        bne  $t0, $zero, Loop
+0x00400014        sw   $t2, 0($s1)
+0x00400018        j    Done
+\end{lstlisting}
+\begin{enumerate}[label=(\alph*),leftmargin=*]
+  \item Give the format (R, I, J) and addressing mode of each instruction.
+  \item Encode \texttt{lw} and \texttt{add} in hex.
+  \item Encode both \texttt{addi} instructions in hex.
+  \item Encode \texttt{bne} (compute the offset).
+  \item Encode \texttt{sw} and \texttt{j}.
+  \item In one sentence, what does the code compute?
+\end{enumerate}
+\end{exercise}
+
+\begin{exercise}[Decoding a function]\label{x:decode}
+A function is stored as these five words:
+\texttt{0x00854020}, \texttt{0x00084880}, \texttt{0x01264820},
+\texttt{0x8D220000}, \texttt{0x03E00008}.
+\begin{enumerate}[label=(\alph*),leftmargin=*]
+  \item Decode each word into a MIPS instruction.
+  \item Give the format of each instruction.
+  \item Write an equivalent C function (the arguments are in
+  \texttt{\$a0}--\texttt{\$a2}).
+  \item Is this a leaf procedure? Does it need a stack frame?
+  \item Why does the code use \texttt{sll} by 2 before adding the base
+  address?
+\end{enumerate}
+\end{exercise}
+
+\begin{exercise}[Procedures and the stack]\label{x:proc}
+\leavevmode
+\begin{lstlisting}[language=C,keywords={int,return}]
+int sum3(int x, int y, int z) { return x + y + z; }
+int g(int a) { return sum3(a, a + 1, a + 2) * 2; }
+\end{lstlisting}
+\begin{enumerate}[label=(\alph*),leftmargin=*]
+  \item Translate \texttt{sum3} into MIPS.
+  \item Translate \texttt{g} into MIPS, following the calling convention.
+  \item Why must \texttt{g} save \texttt{\$ra} but \texttt{sum3} need not?
+  \item Suppose \texttt{g} instead returned \texttt{sum3(\dots) * a}. What
+  extra problem appears, and how do you solve it?
+  \item Draw the stack contents of \texttt{g}'s frame while \texttt{sum3} is
+  running (for the version in (d)).
+  \item Write $D = A + B - C$ for a stack machine and for a load-store
+  machine and count the instructions.
+\end{enumerate}
+\end{exercise}
+
+% ============================================================================
+\section{Practice Problems}
+
+\begin{exercise}\label{p:dec1}
+Decode \texttt{0x01095020} into a MIPS instruction.
+\end{exercise}
+
+\begin{exercise}\label{p:dec2}
+Decode \texttt{0x8E080004}.
+\end{exercise}
+
+\begin{exercise}\label{p:enc1}
+Encode \texttt{sub \$s3,\$s1,\$s2} in binary and hex.
+\end{exercise}
+
+\begin{exercise}\label{p:enc2}
+Encode \texttt{sw \$s1,-8(\$sp)}.
+\end{exercise}
+
+\begin{exercise}\label{p:branch}
+\texttt{beq \$t0,\$zero,Exit} is at address \texttt{0x00400020} and
+\texttt{Exit} is at \texttt{0x00400040}. Find the offset field and the hex
+encoding. Then find the offset field of a \texttt{bne} at
+\texttt{0x0040003C} that jumps back to \texttt{0x00400020}.
+\end{exercise}
+
+\begin{exercise}\label{p:jump}
+\texttt{j Target} is at \texttt{0x00400048}; \texttt{Target} $=$
+\texttt{0x00400100}. Give the 26-bit field and the full encoding.
+\end{exercise}
+
+\begin{exercise}\label{p:const}
+Load \texttt{0xABCD9234} into \texttt{\$s0}. What goes wrong with
+\texttt{lui \$s0,0xABCD; addi \$s0,\$s0,0x9234}?
+\end{exercise}
+
+\begin{exercise}\label{p:modes}
+Name the addressing mode used for the operand/target in:
+\texttt{add \$t0,\$t1,\$t2}; \texttt{addi \$t0,\$t0,4};
+\texttt{lw \$t0,8(\$sp)}; \texttt{beq \$t0,\$t1,L}; \texttt{j L};
+\texttt{jr \$ra}.
+\end{exercise}
+
+\begin{exercise}\label{p:styles}
+Write $D = (A+B)\times C$ for a stack, accumulator, register-memory and
+load-store machine. Count instructions for each.
+\end{exercise}
+
+\begin{exercise}\label{p:array}
+\texttt{a[i] = a[i-1] + b;} with the base of \texttt{a} (word array) in
+\texttt{\$s0}, \texttt{i} in \texttt{\$s1}, \texttt{b} in \texttt{\$s2}.
+\end{exercise}
+
+\begin{exercise}\label{p:loop}
+\texttt{sum = 0; for (i = 0; i < n; i++) sum += A[i];} with \texttt{A} in
+\texttt{\$a0}, \texttt{n} in \texttt{\$a1}, result in \texttt{\$v0}.
+\end{exercise}
+
+\begin{exercise}\label{p:frame}
+Function \texttt{f} uses \texttt{\$s0} and \texttt{\$s1} and calls another
+function. Write its prologue and epilogue.
+\end{exercise}
+
+\begin{exercise}\label{p:endian}
+The word \texttt{0x11223344} is stored at address \texttt{0x1000}. List the
+bytes at \texttt{0x1000}--\texttt{0x1003} on a big-endian and a
+little-endian machine. What does \texttt{lbu} from \texttt{0x1001} return on
+MIPS?
+\end{exercise}
+
+\begin{exercise}\label{p:range}
+What is the range of an \texttt{addi} immediate? How far can a
+\texttt{beq} reach? Where can a \texttt{j} jump?
+\end{exercise}
+
+\begin{exercise}\label{p:pseudo}
+Expand into real instructions: \texttt{bgt \$t0,\$t1,L},
+\texttt{not \$s0,\$s1}, \texttt{li \$t0,-1}, \texttt{move \$a0,\$s2}.
+\end{exercise}
+
+% ============================================================================
+\section{Solutions to the Practice Problems}
+
+\begin{solution}[\ref{p:dec1}]
+Hex to binary, split into fields:
+\enc{0000 0001 0000 1001 0101 0000 0010 0000}{000000 01000 01001 01010 00000 100000}
+R-format, rs $=8$
+(\texttt{\$t0}), rt $=9$ (\texttt{\$t1}), rd $=10$ (\texttt{\$t2}), funct
+\texttt{0x20}: \texttt{add \$t2,\$t0,\$t1}.
+\end{solution}
+
+\begin{solution}[\ref{p:dec2}]
+\texttt{100011 10000 01000 0000000000000100}: opcode \texttt{0x23}
+(\texttt{lw}), rs $=16$ (\texttt{\$s0}), rt $=8$ (\texttt{\$t0}), imm $=4$:
+\texttt{lw \$t0,4(\$s0)}.
+\end{solution}
+
+\begin{solution}[\ref{p:enc1}]
+rs $=17$, rt $=18$, rd $=19$, funct \texttt{0x22}:
+\enc{000000 10001 10010 10011 00000 100010}{0x02329822}
+\end{solution}
+
+\begin{solution}[\ref{p:enc2}]
+opcode \texttt{0x2b}, rs $=$ \texttt{\$sp} $=29$, rt $=$ \texttt{\$s1} $=17$, imm $-8=$
+\texttt{0xFFF8}:
+\enc{101011 11101 10001 1111111111111000}{0xAFB1FFF8}
+\end{solution}
+
+\begin{solution}[\ref{p:branch}]
+Forward: $(0x40-0x24)/4 = 28/4 = 7$;
+\enc{000100 01000 00000 0000000000000111}{0x11000007}
+Backward: $(0x20 - 0x40)/4 = -8$, field \texttt{0xFFF8}. Remember that the
+reference point is PC$+4$, not the branch address.
+\end{solution}
+
+\begin{solution}[\ref{p:jump}]
+Field $= 0x00400100 \gg 2 = $ \texttt{0x0100040}. Encoding $=(2\ll26)\mid$
+\texttt{0x0100040} $=$ \texttt{0x08100040}. Upper 4 bits of PC$+4$ are 0, so
+the target is reachable.
+\end{solution}
+
+\begin{solution}[\ref{p:const}]
+Correct: \texttt{lui \$s0,0xABCD; ori \$s0,\$s0,0x9234}. With \texttt{addi}
+the immediate \texttt{0x9234} is sign-extended to \texttt{0xFFFF9234}, so the
+result is $\texttt{0xABCD0000}+\texttt{0xFFFF9234} = \texttt{0xABCC9234}$
+(wrong upper half).
+\end{solution}
+
+\begin{solution}[\ref{p:modes}]
+Register; immediate; displacement (base); PC-relative; pseudo-direct;
+register indirect.
+\end{solution}
+
+\begin{solution}[\ref{p:styles}]
+Stack: \texttt{PUSH A; PUSH B; ADD; PUSH C; MUL; POP D} (6).
+Accumulator: \texttt{LOAD A; ADD B; MUL C; STORE D} (4).
+Register-memory: \texttt{LOAD R1,A; ADD R1,R1,B; MUL R1,R1,C; STORE R1,D}
+(4).
+Load-store: \texttt{LOAD R1,A; LOAD R2,B; ADD R3,R1,R2; LOAD R4,C; MUL
+R5,R3,R4; STORE R5,D} (6). Load-store needs the most instructions, but
+each one is simple, fixed-length and easy to pipeline.
+\end{solution}
+
+\begin{solution}[\ref{p:array}]
+\leavevmode
+\begin{lstlisting}
+sll  $t0, $s1, 2      # i*4
+add  $t0, $t0, $s0    # &a[i]
+lw   $t1, -4($t0)     # a[i-1]
+add  $t1, $t1, $s2    # + b
+sw   $t1, 0($t0)      # a[i] = ...
+\end{lstlisting}
+\end{solution}
+
+\begin{solution}[\ref{p:loop}]
+\leavevmode
+\begin{lstlisting}
+      add  $v0, $zero, $zero   # sum = 0
+      add  $t0, $zero, $zero   # i = 0
+Loop: slt  $t1, $t0, $a1       # i < n ?
+      beq  $t1, $zero, Done
+      sll  $t2, $t0, 2
+      add  $t2, $t2, $a0       # &A[i]
+      lw   $t3, 0($t2)
+      add  $v0, $v0, $t3       # sum += A[i]
+      addi $t0, $t0, 1         # i++
+      j    Loop
+Done:
+\end{lstlisting}
+\end{solution}
+
+\begin{solution}[\ref{p:frame}]
+\leavevmode
+\begin{lstlisting}
+f:  addi $sp, $sp, -12
+    sw   $ra, 8($sp)
+    sw   $s0, 4($sp)
+    sw   $s1, 0($sp)
+    ...                  # body, including jal g
+    lw   $s1, 0($sp)
+    lw   $s0, 4($sp)
+    lw   $ra, 8($sp)
+    addi $sp, $sp, 12
+    jr   $ra
+\end{lstlisting}
+\end{solution}
+
+\begin{solution}[\ref{p:endian}]
+Big-endian: \texttt{11 22 33 44}; little-endian: \texttt{44 33 22 11} (at
+\texttt{0x1000}..\texttt{0x1003}). MIPS is big-endian, so \texttt{lbu} from
+\texttt{0x1001} returns \texttt{0x22}.
+\end{solution}
+
+\begin{solution}[\ref{p:range}]
+\texttt{addi}: $-32768 \ldots 32767$. \texttt{beq}: $-2^{15}\ldots2^{15}-1$
+words from PC$+4$, i.e.\ about $\pm128$~KB. \texttt{j}: anywhere inside the
+same 256~MB region (same top 4 bits as PC$+4$); use \texttt{jr} for
+anything farther.
+\end{solution}
+
+\begin{solution}[\ref{p:pseudo}]
+\texttt{bgt}: \texttt{slt \$at,\$t1,\$t0; bne \$at,\$zero,L}.
+\texttt{not}: \texttt{nor \$s0,\$s1,\$zero}.
+\texttt{li \$t0,-1}: \texttt{addi \$t0,\$zero,-1} (\texttt{ori} would
+zero-extend and give \texttt{0x0000FFFF}).
+\texttt{move}: \texttt{add \$a0,\$s2,\$zero}.
+\end{solution}
+
+% ============================================================================
+\section{Solutions to the Exam-Style Questions}
+
+\begin{solution}[\ref{x:loop}]
+\leavevmode
+\begin{enumerate}[label=(\alph*),leftmargin=*]
+  \item \texttt{lw}, \texttt{sw}: I, base+displacement; \texttt{add}: R,
+  register; \texttt{addi}: I, immediate; \texttt{bne}: I, PC-relative;
+  \texttt{j}: J, pseudo-direct.
+  \item \texttt{lw \$t1,0(\$s0)}: op \texttt{0x23}, rs $=16$, rt $=9$:
+  \enc{100011 10000 01001 0000000000000000}{0x8E090000}
+  \texttt{add \$t2,\$t2,\$t1}: rs $=10$, rt $=9$, rd $=10$, funct
+  \texttt{0x20}:
+  \enc{000000 01010 01001 01010 00000 100000}{0x01495020}
+  \item \texttt{addi \$s0,\$s0,4}:
+  \enc{001000 10000 10000 0000000000000100}{0x22100004}
+  \texttt{addi \$t0,\$t0,-1} ($-1 = $ \texttt{0xFFFF}):
+  \enc{001000 01000 01000 1111111111111111}{0x2108FFFF}
+  \item Offset $= (\texttt{0x00400000} - \texttt{0x00400014})/4 = -20/4 =
+  -5 = $ \texttt{0xFFFB}; op \texttt{0x05}, rs $=8$, rt $=0$:
+  \enc{000101 01000 00000 1111111111111011}{0x1500FFFB}
+  \item \texttt{sw \$t2,0(\$s1)}: op \texttt{0x2b}, rs $=17$, rt $=10$:
+  \enc{101011 10001 01010 0000000000000000}{0xAE2A0000}
+  \texttt{j Done}: field $=$ \texttt{0x00400040} $\gg 2 =$
+  \texttt{0x0100010}, word $=$ \texttt{0x08000000} $|$ \texttt{0x0100010}
+  $=$ \texttt{0x08100010}.
+  \item It adds \texttt{\$t0} consecutive words starting at address
+  \texttt{\$s0} into \texttt{\$t2} (a do-while loop, so it assumes
+  \texttt{\$t0} $\ge 1$), stores the sum at the address in \texttt{\$s1},
+  and jumps to \texttt{Done}.
+\end{enumerate}
+\end{solution}
+
+\begin{solution}[\ref{x:decode}]
+\leavevmode
+\begin{enumerate}[label=(\alph*),leftmargin=*]
+  \item
+  \begin{tabular}[t]{@{}ll@{}}
+  \texttt{000000 00100 00101 01000 00000 100000} & \texttt{add \$t0,\$a0,\$a1} \\
+  \texttt{000000 00000 01000 01001 00010 000000} & \texttt{sll \$t1,\$t0,2} \\
+  \texttt{000000 01001 00110 01001 00000 100000} & \texttt{add \$t1,\$t1,\$a2} \\
+  \texttt{100011 01001 00010 0000000000000000} & \texttt{lw \$v0,0(\$t1)} \\
+  \texttt{000000 11111 00000 00000 00000 001000} & \texttt{jr \$ra} \\
+  \end{tabular}
+  \item R, R, R, I, R.
+  \item \texttt{int f(int a, int b, int *A) \{ return A[a + b]; \}}
+  \item Yes, it calls nothing, so \texttt{\$ra} is never overwritten. It uses
+  only \texttt{\$t} registers (caller-saved), so it needs no stack frame.
+  \item Array elements are 4-byte words: the byte offset of element $i$ is
+  $4i$, and \texttt{sll} by 2 multiplies by 4.
+\end{enumerate}
+\end{solution}
+
+\begin{solution}[\ref{x:proc}]
+\leavevmode
+\begin{enumerate}[label=(\alph*),leftmargin=*]
+  \item
+\begin{lstlisting}
+sum3: add  $v0, $a0, $a1
+      add  $v0, $v0, $a2
+      jr   $ra
+\end{lstlisting}
+  \item
+\begin{lstlisting}
+g:    addi $sp, $sp, -4
+      sw   $ra, 0($sp)       # g calls sum3, so save $ra
+      addi $a1, $a0, 1       # y = a + 1
+      addi $a2, $a0, 2       # z = a + 2   ($a0 = a already)
+      jal  sum3
+      add  $v0, $v0, $v0     # * 2
+      lw   $ra, 0($sp)
+      addi $sp, $sp, 4
+      jr   $ra
+\end{lstlisting}
+  \item \texttt{jal sum3} overwrites \texttt{\$ra}; without saving it,
+  \texttt{g} could not return to its own caller. \texttt{sum3} is a leaf, so
+  its \texttt{\$ra} stays intact.
+  \item \texttt{a} lives in \texttt{\$a0}, which is not preserved across the
+  call. Keep it in a callee-saved register (save that register first):
+\begin{lstlisting}
+g:    addi $sp, $sp, -8
+      sw   $ra, 4($sp)
+      sw   $s0, 0($sp)
+      add  $s0, $a0, $zero   # keep a across the call
+      addi $a1, $a0, 1
+      addi $a2, $a0, 2
+      jal  sum3
+      mul  $v0, $v0, $s0     # * a
+      lw   $s0, 0($sp)
+      lw   $ra, 4($sp)
+      addi $sp, $sp, 8
+      jr   $ra
+\end{lstlisting}
+  \item From high to low addresses: [caller's frame] $\to$ saved
+  \texttt{\$ra} (at \texttt{\$sp+4}) $\to$ saved \texttt{\$s0} (at
+  \texttt{\$sp+0}, where \texttt{\$sp} points). \texttt{sum3} adds nothing.
+  \item Stack: \texttt{PUSH A; PUSH B; ADD; PUSH C; SUB; POP D} (6).
+  Load-store: \texttt{LOAD R1,A; LOAD R2,B; ADD R3,R1,R2; LOAD R4,C; SUB
+  R5,R3,R4; STORE R5,D} (6). Same count, but the load-store version can
+  overlap independent loads and keeps values in registers for reuse.
+\end{enumerate}
+\end{solution}
+
+\end{document}

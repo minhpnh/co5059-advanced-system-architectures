@@ -1,0 +1,300 @@
+% !TeX program = xelatex
+\documentclass[11pt]{article}
+
+% -----------------------------------------------------------------------------
+% Lecture-note template: edit the course information below, then duplicate the
+% sample lecture section whenever you add a new lecture.
+% -----------------------------------------------------------------------------
+
+% Page layout and typography
+\usepackage[a4paper,portrait,margin=1in]{geometry}
+\usepackage{fontspec}
+\newfontfamily\arialfont{Arial}
+\usepackage{microtype}
+\usepackage{parskip}
+
+% Mathematics and diagrams
+\usepackage{amsmath,amssymb,amsthm,mathtools}
+\usepackage{tikz-cd}
+\usetikzlibrary{arrows.meta,positioning,shapes.geometric}
+
+% Reusable styles for flowcharts and concept diagrams.
+\tikzset{
+  concept/.style={
+    draw=brandprimary,
+    fill=brandsecondary!8,
+    rounded corners,
+    minimum width=3.2cm,
+    minimum height=0.9cm,
+    align=center,
+    font=\small,
+  },
+  diagram arrow/.style={-{Latex[length=2.5mm]},thick,brandprimary},
+}
+
+% Tables, figures, and lists
+\usepackage{graphicx}
+\usepackage{enumitem}
+
+% Color and links
+\usepackage[dvipsnames]{xcolor}
+\definecolor{brandprimary}{HTML}{030391}
+\definecolor{brandsecondary}{HTML}{1488D8}
+\usepackage[
+  colorlinks=true,
+  linkcolor=brandprimary,
+  citecolor=brandsecondary,
+  urlcolor=brandsecondary
+]{hyperref}
+
+% Headers and footers
+\usepackage{fancyhdr}
+\setlength{\headheight}{36pt}
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{%
+  \parbox[c][0.42in][c]{0.42\textwidth}{%
+    \raggedright\small\textbf{\coursecode}\\\coursename}}
+\fancyhead[R]{%
+  \parbox[c][0.42in][c]{0.42\textwidth}{%
+    \raggedleft\includegraphics[height=0.42in]{assets/hcmut_logo.png}}}
+\fancyfoot[L]{\small Semester \semester}
+\fancyfoot[C]{\small\nouppercase{\leftmark}}
+\fancyfoot[R]{\small Page \thepage}
+\renewcommand{\sectionmark}[1]{\markboth{#1}{}}
+
+% -----------------------------------------------------------------------------
+% Course information -- change these values once per course
+% -----------------------------------------------------------------------------
+\newcommand{\universityname}{HCMC University of Technology}
+\newcommand{\faculty}{Faculty of Computer Science and Engineering}
+\newcommand{\coursecode}{CO5173}
+\newcommand{\coursename}{Data Engineering}
+\newcommand{\semester}{261}
+\newcommand{\instructor}{Associate Professor Tran Minh Quang}
+\newcommand{\instructoremail}{quangtran@hcmut.edu.vn}
+\newcommand{\notetaker}{Phan Nhat Minh}
+\newcommand{\notetakeremail}{minh.phannhat95@hcmut.edu.vn}
+\newcommand{\coursedescription}{A brief description of the course and the scope
+of these lecture notes.}
+\newcommand{\emaillink}[1]{%
+  \href{mailto:#1}{\textcolor{brandprimary}{\texttt{#1}}}}
+
+% Colored definitions, results, examples, proofs, and notes.
+% This is kept in a separate file so it can be reused in other projects.
+\input{colored-boxes}
+
+% -----------------------------------------------------------------------------
+% Useful notation -- add course-specific commands here
+% -----------------------------------------------------------------------------
+\newcommand{\R}{\mathbb{R}}
+\newcommand{\N}{\mathbb{N}}
+\newcommand{\Z}{\mathbb{Z}}
+\newcommand{\Q}{\mathbb{Q}}
+\newcommand{\C}{\mathbb{C}}
+\DeclareMathOperator{\im}{im}
+\DeclareMathOperator{\rank}{rank}
+
+% Creates a consistently formatted lecture heading.
+% Usage: \lecture{number}{title}{date}
+\newcommand{\lecture}[3]{%
+  \section{Lecture #1: #2}
+  \label{lec:#1}
+  \begin{center}
+    \small\textit{#3}
+  \end{center}
+}
+
+\begin{document}
+
+% -----------------------------------------------------------------------------
+% Metadata title page
+% -----------------------------------------------------------------------------
+\pagenumbering{roman}
+\begin{titlepage}
+  \thispagestyle{empty}
+
+  \begin{center}
+    \includegraphics[width=0.82\textwidth]{assets/hcmut_banner_en.png}
+
+    \vspace{0.35cm}
+    {\arialfont\large\bfseries\color{brandprimary}\faculty\par}
+  \end{center}
+
+  \vfill
+  \begin{center}
+    {\Huge\bfseries Lecture Notes\par}
+    \vspace{0.55cm}
+    {\LARGE\bfseries\color{brandprimary}\coursename\par}
+    \vspace{0.2cm}
+    {\arialfont\large\bfseries\color{brandsecondary}\coursecode\par}
+
+    \vspace{0.65cm}
+    {\color{brandsecondary}\rule{0.38\textwidth}{1.2pt}}
+    \vspace{0.65cm}
+
+    {\large\textbf{Instructor:} \instructor\
+      {\small(\emaillink{\instructoremail})}\par}
+    \vspace{0.3cm}
+    {\large\textbf{Notes by:} \notetaker\
+      {\small(\emaillink{\notetakeremail})}\par}
+    \vspace{0.3cm}
+    {\large\textbf{Semester:} \semester\par}
+
+    \vspace{0.8cm}
+    \begin{minipage}{0.72\textwidth}
+      \centering\itshape\color{black!70}
+      \coursedescription
+    \end{minipage}
+  \end{center}
+
+  \vfill
+  \begin{center}
+    \small\color{black!60}Last updated: \today
+  \end{center}
+\end{titlepage}
+
+% -----------------------------------------------------------------------------
+% Table of contents -- kept on its own page
+% -----------------------------------------------------------------------------
+\clearpage
+\setcounter{page}{2}
+\thispagestyle{empty}
+\hypersetup{linkcolor=black}
+\tableofcontents
+\hypersetup{linkcolor=brandprimary}
+\clearpage
+\pagenumbering{arabic}
+
+% -----------------------------------------------------------------------------
+% Sample lecture -- duplicate this block for each new lecture
+% -----------------------------------------------------------------------------
+\lecture{1}{Introduction}{September 2, 2026}
+
+\subsection{Overview}
+
+State the goals of the lecture and briefly connect them to earlier material.
+Use inline mathematics such as $f\colon X\to Y$, or a displayed equation:
+\begin{equation}
+  f(x)=x^2.
+  \label{eq:sample-function}
+\end{equation}
+Equation~\eqref{eq:sample-function} can be referenced automatically.
+
+\subsection{Colored environment examples}
+
+\begin{definition}[Lipschitz continuity]
+A function $f\colon X\to Y$ between metric spaces is \emph{Lipschitz
+continuous} if there exists $L\geq 0$ such that
+\[
+  d_Y\bigl(f(x),f(y)\bigr)\leq Ld_X(x,y)
+\]
+for every $x,y\in X$.
+\end{definition}
+
+\begin{theorem}[Lipschitz functions are uniformly continuous]
+Every Lipschitz continuous function is uniformly continuous.
+\end{theorem}
+
+\begin{proof}
+Let $L$ be a Lipschitz constant. If $L=0$, the function is constant. Otherwise,
+given $\varepsilon>0$, choose $\delta=\varepsilon/L$. Then
+$d_X(x,y)<\delta$ implies
+$d_Y(f(x),f(y))\leq Ld_X(x,y)<\varepsilon$.
+\end{proof}
+
+\begin{eg}[A concrete function]
+The function $f(x)=x^2$ is Lipschitz continuous on $[0,1]$, since
+$|x^2-y^2|=|x-y||x+y|\leq 2|x-y|$.
+\end{eg}
+
+\begin{prop}[Sums of Lipschitz functions]
+If $f$ and $g$ have Lipschitz constants $L_f$ and $L_g$, respectively, then
+$f+g$ has Lipschitz constant $L_f+L_g$.
+\end{prop}
+
+\begin{explanation}
+The Lipschitz constant is a global bound on steepness. Adding two functions
+adds their possible changes, which explains why their constants add.
+\end{explanation}
+
+\begin{remark}
+Uniform continuity does not imply Lipschitz continuity in general; for example,
+$f(x)=\sqrt{x}$ on $[0,1]$ is uniformly continuous but not Lipschitz.
+\end{remark}
+
+\begin{note}
+Use a note for a useful convention, reference, or fact that should stand out
+without being presented as a formal result.
+\end{note}
+
+\begin{noot}{Study tip}
+After each lecture, replace this text with the two or three ideas you most want
+to remember.
+\end{noot}
+
+\subsection{Diagram examples}
+
+The examples below can be edited by changing the node labels and arrows.
+
+\begin{center}
+\begin{minipage}[t]{0.82\textwidth}
+  \centering
+  \textbf{Commutative diagram with \texttt{tikz-cd}}\par\medskip
+  \begin{tikzcd}[row sep=large,column sep=huge]
+    X \arrow[r,"f"] \arrow[d,"\pi"']
+      & Y \arrow[d,"g"] \\
+    X/{\sim} \arrow[r,"\bar{f}"']
+      & Z
+  \end{tikzcd}
+
+  \smallskip
+  \small The two paths from $X$ to $Z$ represent the identity
+  $g\circ f=\bar f\circ\pi$.
+\end{minipage}
+\par\medskip
+\begin{minipage}[t]{0.82\textwidth}
+  \centering
+  \textbf{Concept flowchart with \texttt{tikz}}\par\medskip
+  \begin{tikzpicture}[node distance=1.1cm and 1.5cm]
+    \node[concept] (definition) {Definition};
+    \node[concept,right=of definition] (example) {Example};
+    \node[concept,below=of example] (theorem) {Theorem};
+    \node[concept,left=of theorem] (application) {Application};
+
+    \draw[diagram arrow] (definition) --
+      node[above,font=\scriptsize]{illustrate} (example);
+    \draw[diagram arrow] (example) --
+      node[right,font=\scriptsize]{motivate} (theorem);
+    \draw[diagram arrow] (theorem) --
+      node[below,font=\scriptsize]{use} (application);
+    \draw[diagram arrow] (application) --
+      node[left,font=\scriptsize]{refine} (definition);
+  \end{tikzpicture}
+\end{minipage}
+\end{center}
+
+\subsection{Exercises}
+
+\begin{exercise}
+Show that $f(x)=3x-2$ is Lipschitz on $\R$ and find a Lipschitz constant.
+\end{exercise}
+
+\begin{solution}
+$|f(x)-f(y)|=|3x-3y|=3|x-y|$, so $L=3$ is a Lipschitz constant.
+\end{solution}
+
+\subsection{Summary}
+
+\begin{itemize}[leftmargin=*]
+  \item List the main idea from the lecture.
+  \item Record the most important definition or theorem.
+  \item Note what will be covered next.
+\end{itemize}
+
+% Example of adding another lecture:
+% \lecture{2}{Next Topic}{September 4, 2026}
+% \subsection{Overview}
+% Add notes here.
+
+\end{document}

@@ -1,0 +1,319 @@
+% !TeX program = xelatex
+\documentclass[11pt]{article}
+\newcommand{\notesdir}{../../lecture-notes}
+\input{../../lecture-notes/preamble}
+
+\newcommand{\ex}[3]{\subsection*{Exercise #1 \normalfont\small(book p.~#2, PDF p.~#3)}%
+  \addcontentsline{toc}{subsection}{Exercise #1}}
+
+\begin{document}
+\sloppy
+\makecover{Textbook Exercises: Instruction Sets}{Hennessy \& Patterson,
+\emph{Computer Architecture: A Quantitative Approach}, 5th ed., Appendix~A
+(Instruction Set Principles) exercises A.1--A.23. A map of every exercise
+with its page and relevance to Lecture~2, worked solutions for the ones our
+lectures cover, and hints for the rest.}
+
+% ============================================================================
+\section{How to Use This File}
+
+\begin{itemize}[leftmargin=*]
+  \item The exercise text is \textbf{not} copied here -- open the book
+  (\texttt{references/Computer Architecture - A Quantitative Approach.pdf})
+  at the page given. ``Book p.'' is the printed page (Appendix~A pages are
+  numbered A-1, A-2, \dots); ``PDF p.'' is the page in the PDF viewer.
+  \item The book uses 64-bit MIPS (\texttt{LD}, \texttt{SD}, \texttt{DADD},
+  \dots); the ideas are the same as the 32-bit MIPS of our lecture.
+  \item A.1--A.4 are the CPI-from-instruction-mix exercises (Lecture~1
+  skills applied to MIPS). They need Figures~A.27 and A.28 (book pp.~A-41 and
+  A-42, PDF pp.~564--565).
+\end{itemize}
+
+% ============================================================================
+\section{Exercise Map}
+
+\begin{center}
+\small
+\renewcommand{\arraystretch}{1.15}
+\begin{tabular}{@{}lll>{\raggedright\arraybackslash}p{5.2cm}l@{}}
+\toprule
+Ex. & Book p. & PDF p. & Topic & Priority \\
+\midrule
+A.1 & A-47 & 570 & Effective CPI, SPECint mix (gap, gcc) & \textbf{High} \\
+A.2 & A-47 & 570 & Effective CPI, SPECint mix (gzip, perlbmk) & \textbf{High} \\
+A.3 & A-47/48 & 570--571 & Effective CPI with FP, SPECfp mix (lucas, swim) & \textbf{High} \\
+A.4 & A-48 & 571 & Effective CPI with FP (applu, art) & \textbf{High} \\
+A.5 & A-48 & 571 & Copy propagation on three statements & Medium \\
+A.6 & A-48 & 571 & Lab: gcc optimization levels & Skip (lab) \\
+A.7 & A-48 & 571 & MIPS and x86 code for an array loop; counts & \textbf{High} \\
+A.8 & A-48/49 & 571--572 & Expanding-opcode encoding in 12 bits & \textbf{High} \\
+A.9 & A-49 & 572 & Code size for the four ISA styles & \textbf{High} \\
+A.10 & A-49 & 572 & Discussion: are more registers better? & \textbf{High} \\
+A.11 & A-50 & 573 & Struct size and alignment, 32/64-bit & Medium \\
+A.12--A.17 & A-50/51 & 573--574 & Labs: measuring mixes, AVX, gcc ports, energy & Skip (lab) \\
+A.18 & A-51/52 & 574--575 & Memory traffic of the four ISA styles & \textbf{High} \\
+A.19 & A-52 & 575 & ISA styles with register-indirect addressing (loop) & Medium \\
+A.20 & A-52/53 & 575--576 & Choosing offset lengths from usage data & Medium \\
+A.21 & A-53/54 & 576--577 & Lab: displacement histograms & Skip (lab) \\
+A.22 & A-54 & 577 & Big/little endian, ASCII, misaligned reads & \textbf{High} \\
+A.23 & A-54 & 577 & Discussion: ISA for desktop/server/cloud/embedded & Medium \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+% ============================================================================
+\section{Worked Solutions: High Priority}
+
+\subsection*{Method for A.1--A.4}
+\addcontentsline{toc}{subsection}{Method for A.1--A.4}
+Group the figure's rows into the CPI classes given in the exercise, average
+the two programs, then $\CPI = \sum F_i\cdot\CPI_i$. Conditional branches
+use $0.6\times2.0 + 0.4\times1.5 = 1.8$. Assumptions used below (state them
+in an exam): \texttt{jump}, \texttt{call} and \texttt{return} count as
+jumps; every other integer row (add, sub, mul, compare, load imm, shifts,
+logic, cond move) is an ALU instruction; \texttt{sub FP} counts as FP add;
+FP move/compare/cond-move/other count as ``other FP''.
+
+\ex{A.1}{A-47}{570}
+\emph{Asks:} the effective CPI using the average of gap and gcc.
+\begin{solution}
+Loads$+$stores: gap $36.8\%$, gcc $38.3\%$ $\to 37.55\%$. Cond.\ branches
+$10.7\%$. Jumps (jump$+$call$+$return): $4.0\%$, $1.9\%$ $\to 2.95\%$. ALU:
+the rest, $48.8\%$.
+\[
+  \CPI = 0.488(1.0) + 0.3755(1.4) + 0.107(1.8) + 0.0295(1.2)
+  = 0.488 + 0.526 + 0.193 + 0.035 \approx 1.24 .
+\]
+\end{solution}
+
+\ex{A.2}{A-47}{570}
+\emph{Asks:} the same with the average of gzip and perlbmk.
+\begin{solution}
+Loads$+$stores $35.05\%$, cond.\ branches $10.95\%$, jumps $2.75\%$, ALU
+$51.25\%$:
+\[
+  \CPI = 0.5125 + 0.3505(1.4) + 0.1095(1.8) + 0.0275(1.2) \approx 1.23 .
+\]
+\end{solution}
+
+\ex{A.3}{A-47/48}{570--571}
+\emph{Asks:} the effective CPI including FP classes, average of lucas and
+swim (Fig.~A.28).
+\begin{solution}
+\begin{tabular}[t]{@{}lccc|c@{}}
+Class (CPI) & lucas & swim & avg & contribution \\
+\hline
+Integer ALU (1.0) & 20.9 & 44.8 & 32.85 & 0.329 \\
+Int load/store (1.4) & 14.0 & 10.4 & 12.2 & 0.171 \\
+Cond.\ branch (1.8) & 0.6 & 1.3 & 0.95 & 0.017 \\
+FP load/store (1.5) & 34.4 & 21.8 & 28.1 & 0.422 \\
+FP add/sub (4.0) & 15.8 & 13.7 & 14.75 & 0.590 \\
+FP multiply (6.0) & 9.4 & 6.9 & 8.15 & 0.489 \\
+FP divide (20.0) & 0 & 0.3 & 0.15 & 0.030 \\
+Other FP (2.0) & 5.0 & 0.9 & 2.95 & 0.059 \\
+\end{tabular}
+
+$\CPI \approx 2.11$. FP arithmetic, although only $\approx23\%$ of the
+instructions, contributes over half of the cycles.
+\end{solution}
+
+\ex{A.4}{A-48}{571}
+\emph{Asks:} the same with the average of applu and art.
+\begin{solution}
+\begin{tabular}[t]{@{}lccc|c@{}}
+Class (CPI) & applu & art & avg & contribution \\
+\hline
+Integer ALU (1.0) & 50.4 & 42.1 & 46.25 & 0.463 \\
+Int load/store (1.4) & 16.7 & 18.1 & 17.4 & 0.244 \\
+Cond.\ branch (1.8) & 2.5 & 11.5 & 7.0 & 0.126 \\
+FP load/store (1.5) & 15.6 & 16.5 & 16.05 & 0.241 \\
+FP add/sub (4.0) & 5.2 & 4.5 & 4.85 & 0.194 \\
+FP multiply (6.0) & 8.6 & 4.1 & 6.35 & 0.381 \\
+FP divide (20.0) & 0.3 & 0.6 & 0.45 & 0.090 \\
+Other FP (2.0) & 0.7 & 2.4 & 1.55 & 0.031 \\
+\end{tabular}
+
+$\CPI \approx 1.77$.
+\end{solution}
+
+\ex{A.7}{A-48}{571}
+\emph{Asks:} code for \texttt{A[i] = B[i] + C} ($i = 0..100$, 64-bit data,
+everything kept in memory between uses) on MIPS and x86: dynamic
+instruction count, memory-data references and code size.
+\begin{solution}
+(a) One possible MIPS64 version (A, B, C, i at 1000, 3000, 5000, 7000):
+\begin{lstlisting}
+        DADD  R1, R0, R0       ; i = 0
+        SD    R1, 7000(R0)
+Loop:   LD    R1, 7000(R0)     ; load i
+        DSLL  R2, R1, #3       ; i * 8
+        LD    R3, 3000(R2)     ; B[i]
+        LD    R4, 5000(R0)     ; C
+        DADD  R3, R3, R4
+        SD    R3, 1000(R2)     ; A[i]
+        DADDI R1, R1, #1       ; i++
+        SD    R1, 7000(R0)     ; store i
+        SLTI  R5, R1, #101     ; i <= 100 ?
+        BNEZ  R5, Loop
+\end{lstlisting}
+Dynamic count $= 2 + 10\times101 = 1012$. Data references $= 1 + 5\times101
+= 506$ (3 loads $+$ 2 stores per iteration). Code size $= 12\times4 = 48$
+bytes.
+
+(b) x86 can use memory operands and scaled indexing, e.g.\ per iteration:
+\texttt{mov rax,[i]; mov rbx,[B+rax*8]; add rbx,[C]; mov [A+rax*8],rbx;
+add qword [i],1; cmp qword [i],100; jle Loop}. That is $1 + 7\times101 =
+708$ instructions and $1 + 7\times101 = 708$ data references (the
+\texttt{add} to memory reads and writes). Code size depends on the encodings
+(variable length, roughly 4--10 bytes each): fewer instructions than MIPS,
+but more bytes per instruction and more memory traffic.
+\end{solution}
+
+\ex{A.8}{A-48/49}{571--572}
+\emph{Asks:} with 12-bit instructions and 5-bit register fields, can we
+encode given numbers of two-, one- and zero-address instructions?
+\begin{solution}
+Use expanding opcodes. Two-address: $12-10 = 2$ opcode bits, 4 patterns; 3
+are used, 1 is left as an escape. One-address: the escape plus 5 more opcode
+bits gives $2^5 = 32$ patterns. Each one-address pattern left unused
+escapes to another 5 bits, i.e.\ 32 zero-address instructions.
+\begin{enumerate}[label=(\alph*),leftmargin=*]
+  \item 3 / 30 / 45: 2 spare one-address patterns $\to 2\times32 = 64 \ge 45$.
+  \textbf{Possible.}
+  \item 3 / 31 / 35: 1 spare pattern $\to 32 < 35$. \textbf{Not possible.}
+  \item 3 two-address and 24 zero-address need one escape pattern
+  ($24\le32$), so at most $32-1 = 31$ one-address instructions.
+\end{enumerate}
+\end{solution}
+
+\ex{A.9}{A-49}{572}
+\emph{Asks:} (a) names per instruction and code size for $C = A + B$ on each
+ISA style of Fig.~A.2 (8-bit opcode, 64-bit memory address, 6-bit register
+field); (b) a longer sequence, marking destroyed operands and overhead.
+\begin{solution}
+(a)
+
+\noindent\begin{tabular}{@{}lp{6.2cm}p{4.2cm}@{}}
+Style & Code (names per instruction) & Size \\
+\hline
+Stack & Push A (1), Push B (1), Add (0), Pop C (1) & $3\cdot72+8 = 224$ bits $=28$ B \\
+Accumulator & Load A, Add B, Store C (1 each) & $3\cdot72 = 216$ bits $=27$ B \\
+Reg-memory & Load R1,A; Add R3,R1,B; Store R3,C & $78+84+78 = 240$ bits $=30$ B \\
+Load-store & Load R1,A; Load R2,B; Add R3,R1,R2; Store R3,C & $78+78+26+78 = 260$ bits $=32.5$ B \\
+\end{tabular}
+
+(b) Write each sequence the same way. Stack and accumulator machines
+destroy their operands (the top of stack / accumulator), so reusing $A$,
+$C$ or $D$ needs extra loads or pushes -- those are the overhead
+instructions and overhead data bytes. Register machines keep $A$, $C$, $D$
+in registers and need no reloads, at the cost of longer instructions.
+\end{solution}
+
+\ex{A.10}{A-49}{572}
+\emph{Asks:} trade-offs of adding more registers to MIPS.
+\begin{solution}
+For: fewer loads/stores (less spilling), more values kept in registers
+across loops and calls, more room for compiler optimizations (register
+allocation, unrolling, scheduling).
+Against: more bits per register field (bigger instructions or fewer opcode
+and immediate bits), a larger and slower register file (more ports, longer
+access time, possibly a longer clock or extra pipeline stage), more state to
+save on context switches and calls, more power and area, and diminishing
+returns once the compiler cannot use them all. Changing the count also
+breaks binary compatibility.
+\end{solution}
+
+\ex{A.18}{A-51/52}{574--575}
+\emph{Asks:} code for \texttt{A=B+C; B=A+C; D=A-B} on accumulator,
+memory-memory, stack and load-store machines; mark reloads and operand
+passing; count instruction and data bytes for 16-bit and then 64-bit
+addresses/data.
+\begin{solution}
+Approach: 1-byte opcodes, direct addresses (2 bytes, then 8 bytes),
+register fields 4 bits (16 registers). Count, for each style, instruction
+bytes fetched and data bytes moved. Typical outcome: accumulator and stack
+code reload values ($A$, $C$) because their single storage place is
+overwritten; memory-memory has short programs but every operand is a
+memory access; load-store loads $B$, $C$ once, keeps everything in
+registers and stores only $A$, $B$, $D$. With 16-bit addresses the
+memory-oriented styles are competitive. With 64-bit addresses every address
+in an instruction costs 8 bytes, so load-store (which names memory least
+often) has the lowest total traffic. See our ISA review's practice problem
+on $D=(A+B)\times C$ for the same method.
+\end{solution}
+
+\ex{A.22}{A-54}{577}
+\emph{Asks:} store \texttt{434F 4D50 5554 4552} in an aligned double word,
+big and little endian, read it as ASCII, and list misaligned 2-byte
+(big-endian) and 4-byte (little-endian) reads.
+\begin{solution}
+The bytes \texttt{43 4F 4D 50 55 54 45 52} are the ASCII codes of
+\texttt{C O M P U T E R}.
+\begin{enumerate}[label=(\alph*),leftmargin=*]
+  \item Big endian (address 0 to 7): \texttt{43 4F 4D 50 55 54 45 52}
+  $\to$ ``COMPUTER''.
+  \item Little endian: \texttt{52 45 54 55 50 4D 4F 43} $\to$ ``RETUPMOC''.
+  \item Misaligned halfwords start at odd addresses 1, 3, 5:
+  \texttt{0x4F4D}, \texttt{0x5055}, \texttt{0x5445}.
+  \item Misaligned words that fit inside the double word start at addresses
+  1, 2, 3. In little endian the value is
+  $\text{byte}[a{+}3]\,\text{byte}[a{+}2]\,\text{byte}[a{+}1]\,\text{byte}[a]$:
+  \texttt{0x50555445}, \texttt{0x4D505554}, \texttt{0x4F4D5055}.
+\end{enumerate}
+\end{solution}
+
+% ============================================================================
+\section{Worked Solutions: Medium Priority}
+
+\ex{A.5}{A-48}{571}
+\emph{Asks:} apply copy propagation to \texttt{A=B+C; B=A+C; D=A-B} until no
+operand is a computed value; where does work go up or down?
+\begin{solution}
+Using the original $B$ and $C$: $A = B + C$; $B' = (B + C) + C = B + 2C$;
+$D = A - B' = (B + C) - (B + 2C) = -C$. Statement 2 got \emph{more}
+work (two additions instead of one); statement 3 got much \emph{less} (just
+a negation). So the same transformation can help or hurt: an optimizing
+compiler must evaluate costs case by case, which is why optimization is
+hard.
+\end{solution}
+
+\ex{A.11}{A-50}{573}
+\emph{Asks:} size of a given C struct on 32- and 64-bit machines, and the
+minimum size after reordering its members.
+\begin{solution}
+Assume each type is aligned to its own size (double 8, pointers 4 or 8).
+32-bit: the members land at offsets 0, 1, 4, 8, 16, 20, 24, 32, 36, 40;
+the data ends at 44 and the struct is padded to a multiple of 8: \textbf{48
+bytes}. Sorted largest first (doubles, then 4-byte items, short, chars):
+\textbf{40 bytes}.
+64-bit (8-byte pointers): offsets 0, 1, 4, 8, 16, 20, 24, 32, 40, 48; ends
+at 52, padded to \textbf{56 bytes}. Reordered: \textbf{48 bytes}.
+\end{solution}
+
+\ex{A.20}{A-52/53}{575--576}
+\emph{Asks:} average instruction length if offsets may be 0, 8, 16 or 24
+bits, versus a fixed 24-bit instruction (with extra instructions for long
+offsets) or always-24-bit offsets.
+\begin{solution}
+Method: an $n$-bit offset including sign holds $n-1$ magnitude bits, so read
+the cumulative percentages of Fig.~A.31 at 0, 7, 15 and 23 bits (data:
+30.4\%, 66.9\%, 100\%; branches: 0.1\%, 85.2\%, 98.5\%, 100\%). Weight each
+offset length by the load/store and branch frequencies of Fig.~A.27 (ALU
+and other instructions are 16 bits), and compare the bytes fetched. The
+point of the exercise: variable-length offsets save bytes on average, but a
+fixed format is simpler to decode, which is the trade-off behind MIPS's
+fixed 16-bit immediates.
+\end{solution}
+
+\ex{A.19, A.23}{A-52, A-54}{575, 577}
+\begin{solution}
+A.19: same method as A.7 and A.18, writing the loop for each ISA style;
+register-indirect addressing lets the stack/accumulator machines walk the
+arrays with a pointer instead of absolute addresses. A.23: desktop/server
+favour performance and compatibility (rich ISAs, 64-bit, SIMD);
+cloud/warehouse favours throughput per watt and virtualization support;
+embedded favours code density, low power and cost (compressed encodings
+such as Thumb/MIPS16, small register files).
+\end{solution}
+
+\end{document}

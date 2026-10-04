@@ -1,0 +1,1378 @@
+\lecture{2}{Review of Instruction Set Architecture}{September 20, 2026}
+
+\subsection{Overview}
+
+This lecture reviews the instruction set---the interface between software and
+hardware. We compare ISA styles (stack, accumulator, memory-memory,
+register-memory, load-store), the main design dimensions of an instruction set
+(operations, addressing modes, operand types, encoding, registers), CISC vs.\
+RISC, and then study MIPS in detail: its instruction formats, register
+conventions, procedure calls, and assembler usage.
+
+\subsection{The Instruction Set}
+
+\begin{definition}[Instruction, instruction set]
+A computer can only understand binary values; its operation is defined by
+predefined binary values called \textbf{instructions}. The
+\textbf{instruction set} is the set of all instructions a processor can
+perform.
+\end{definition}
+
+\begin{center}
+\begin{tikzpicture}[font=\small,
+  layer/.style={draw,minimum width=6.5cm,minimum height=1cm,align=center}]
+  \node[layer,fill=blue!8] (sw) at (0,2) {\textbf{Software}};
+  \node[layer,fill=red!10] (is) at (0,0.7) {\textbf{Instruction Set}};
+  \node[layer,fill=green!10] (hw) at (0,-0.6) {\textbf{Hardware}};
+  \draw[<->,thick] (sw) -- (is);
+  \draw[<->,thick] (is) -- (hw);
+\end{tikzpicture}
+\end{center}
+\begin{note}
+The instruction set is the \textbf{interface} between software and hardware.
+\end{note}
+
+\subsubsection{Instruction execution cycle}
+
+\begin{center}
+\begin{tikzpicture}[font=\small,
+  block/.style={draw,fill=cyan!25,minimum width=2.6cm,minimum height=0.9cm,align=center},
+  >=Stealth]
+  \node[block] (if) at (0,0)    {Instruction\\Fetch};
+  \node[block] (id) at (0,-1.3) {Instruction\\Decode};
+  \node[block] (of) at (0,-2.6) {Operand\\Fetch};
+  \node[block] (ex) at (0,-3.9) {Execute};
+  \node[block] (wb) at (0,-5.2) {Write\\Back};
+  \draw[->] (if) -- (id);
+  \draw[->] (id) -- (of);
+  \draw[->] (of) -- (ex);
+  \draw[->] (ex) -- (wb);
+  \draw[->] (wb.west) -- ++(-1.0,0) |- (if.west);
+
+  \node[right=0.8cm of if] {Obtain the instruction};
+  \node[right=0.8cm of id] {Determine action to be performed};
+  \node[right=0.8cm of of] {Obtain the operand data};
+  \node[right=0.8cm of ex] {Compute the result (update status)};
+  \node[right=0.8cm of wb] {Store the result};
+\end{tikzpicture}
+\end{center}
+
+% ==========================================================================
+\subsection{ISA Styles}
+
+A generic 2-operand operation:
+\begin{center}
+\begin{tikzpicture}[font=\small,>=Stealth]
+  \node[draw,minimum width=3cm,minimum height=1.2cm] (op) at (0,0) {Operation};
+  \draw[->] (-0.9,1.3) -- (-0.9,0.65) node[midway,left]{};
+  \draw[->] (0.9,1.3) -- (0.9,0.65);
+  \node[above] at (-0.9,1.35) {Input1};
+  \node[above] at (0.9,1.35) {Input2};
+  \draw[->] (0,-0.65) -- (0,-1.3);
+  \node[below] at (0,-1.35) {Output};
+\end{tikzpicture}
+\end{center}
+
+\begin{definition}[ISA style]
+ISA styles differ in \emph{where} the operands of an operation live:
+\textbf{Stack}, \textbf{Accumulator}, \textbf{Register-Memory} /
+\textbf{Memory-Memory}, and \textbf{Register-Register} (a.k.a.\
+\emph{load-store}).
+\end{definition}
+
+\subsubsection{Stack}
+
+\begin{center}
+\begin{tikzpicture}[font=\small,>=Stealth]
+  \node[draw,fill=cyan!30,minimum width=2.6cm,minimum height=0.6cm] (s1) at (0,0.6) {Stack Element};
+  \node[draw,fill=cyan!30,minimum width=2.6cm,minimum height=0.6cm] (s2) at (0,0)   {Stack Element};
+  \node[draw,minimum width=0.9cm] (tos) at (-3.0,0.6) {TOS};
+  \draw[->] (tos) -- (s1);
+  \node[draw,trapezium,trapezium angle=65,minimum height=0.6cm,shape border rotate=-90,minimum width=2cm] (alu) at (0,-1.2) {};
+  \draw[->] (s1.south) -- ++(0,-0.3) -| (-0.5,-0.9);
+  \draw[->] (s2.south) -- ++(0,-0.15) -| (0.5,-0.9);
+  \draw[->] (alu.south) -- ++(0,-0.3) -| (-2.3,-1.9) -- (-2.3,1.2) -- (s1.north west);
+\end{tikzpicture}
+\end{center}
+The operands are on top of the stack; the result is pushed back onto the
+stack.
+\begin{eg}[$C = A + B$]
+\leavevmode
+\begin{lstlisting}
+PUSH A
+PUSH B
+ADD
+POP C     # C = A + B
+\end{lstlisting}
+\end{eg}
+\begin{remark}
+\textbf{(+)} Good code density, simple hardware. \quad
+\textbf{(--)} Low parallelism, stack is a bottleneck.
+\end{remark}
+
+\subsubsection{Accumulator}
+
+\begin{center}
+\begin{tikzpicture}[font=\small,>=Stealth]
+  \node[draw,fill=blue!15,minimum width=2.2cm,minimum height=0.6cm] (ac) at (0,1.3) {Accumulator};
+  \node[draw,fill=purple!12,minimum width=1.6cm,minimum height=1.6cm] (mem) at (2.6,0) {Memory};
+  \node[draw,trapezium,trapezium angle=65,minimum height=0.6cm,shape border rotate=-90,minimum width=1.6cm] (alu) at (0,0) {};
+  \draw[->] (alu.north) -- (ac.south);
+  \draw[->] (ac.west) -- ++(-1,0) |- (alu.west);
+  \draw[->] (mem.west) -- (alu.east);
+\end{tikzpicture}
+\end{center}
+One accumulator register is used in all operations.
+\begin{eg}[$C = A + B$]
+\leavevmode
+\begin{lstlisting}
+LOAD A    ; put A in Accumulator (AC)
+ADD B     ; AC <- AC + B
+STORE C   ; C <- AC
+\end{lstlisting}
+\end{eg}
+\begin{remark}
+\textbf{(+)} Easy to write a compiler, few instructions. \quad
+\textbf{(--)} Very high memory traffic, variable CPI.
+\end{remark}
+
+\subsubsection{Memory-Memory}
+
+\begin{center}
+\begin{tikzpicture}[font=\small,>=Stealth]
+  \node[draw,fill=purple!12,minimum width=1.6cm,minimum height=1.6cm] (mem) at (2.2,0) {Memory};
+  \node[draw,trapezium,trapezium angle=65,minimum height=0.6cm,shape border rotate=-90,minimum width=1.8cm] (alu) at (0,0) {};
+  \draw[->] (mem.150) -- ++(-1.6,0.55) -| (-0.5,0.6);
+  \draw[->] (mem.210) -- ++(-1.3,-0.3) -| (0.5,0.35);
+  \draw[->] (alu.south) -- ++(0,-0.5) -| (mem.west);
+\end{tikzpicture}
+\end{center}
+All operands are located in memory.
+\begin{eg}[$C = A + B$]
+\leavevmode
+\begin{lstlisting}
+ADD C, A, B    ; C <- A + B   (all three in memory)
+\end{lstlisting}
+\end{eg}
+\begin{remark}
+\textbf{(+)} Simple to design and understand. \quad
+\textbf{(--)} Accumulator-like bottleneck, heavy memory access.
+\end{remark}
+
+\subsubsection{Register-Memory}
+
+\begin{center}
+\begin{tikzpicture}[font=\small,>=Stealth]
+  \node[draw,fill=cyan!25,minimum width=1.9cm,minimum height=0.5cm] (r1) at (0,1.1) {Register};
+  \node[draw,fill=cyan!25,minimum width=1.9cm,minimum height=0.5cm] (r2) at (0,0.55)   {Register};
+  \node[draw,fill=cyan!25,minimum width=1.9cm,minimum height=0.5cm] (r3) at (0,0)   {Register};
+  \node[draw,fill=purple!12,minimum width=1.6cm,minimum height=1.6cm] (mem) at (2.6,-0.2) {Memory};
+  \node[draw,trapezium,trapezium angle=65,minimum height=0.6cm,shape border rotate=-90,minimum width=1.7cm] (alu) at (0,-1.2) {};
+  \draw[->] (r2.south) -- ++(0,-0.3) -| (-0.4,-0.9);
+  \draw[->] (mem.west) -- ++(-0.5,0) |- (0.4,-0.9);
+  \draw[->] (alu.south) -- ++(0,-0.3) -| (-2.0,-1.9) -- (-2.0,1.1) -- (r1.west);
+\end{tikzpicture}
+\end{center}
+Inputs/outputs can be either a register or memory.
+\begin{eg}[$C = A + B$]
+\leavevmode
+\begin{lstlisting}
+LOAD  R1, A
+ADD   R3, R1, B    ; R3 <- R1 + mem[B]
+STORE R3, C
+\end{lstlisting}
+\end{eg}
+
+\subsubsection{Register-Register (Load-Store)}
+
+\begin{center}
+\begin{tikzpicture}[font=\small,>=Stealth]
+  \node[draw,fill=cyan!25,minimum width=1.9cm,minimum height=0.5cm] (r1) at (0,1.1) {Register};
+  \node[draw,fill=cyan!25,minimum width=1.9cm,minimum height=0.5cm] (r2) at (0,0.55)   {Register};
+  \node[draw,fill=cyan!25,minimum width=1.9cm,minimum height=0.5cm] (r3) at (0,0)   {Register};
+  \node[draw,trapezium,trapezium angle=65,minimum height=0.6cm,shape border rotate=-90,minimum width=1.7cm] (alu) at (0,-1.2) {};
+  \draw[->] (r2.south) -- ++(0,-0.3) -| (-0.4,-0.9);
+  \draw[->] (r3.south) -- ++(0,-0.15) -| (0.4,-0.9);
+  \draw[->] (alu.south) -- ++(0,-0.3) -| (-2.0,-1.9) -- (-2.0,1.1) -- (r1.west);
+\end{tikzpicture}
+\end{center}
+All operations are on registers; dedicated \texttt{Load}/\texttt{Store}
+instructions access memory.
+\begin{eg}[$C = A + B$]
+\leavevmode
+\begin{lstlisting}
+LOAD  R1, A
+LOAD  R2, B
+ADD   R3, R1, R2
+STORE R3, C
+\end{lstlisting}
+\end{eg}
+
+\subsubsection{Historical examples}
+
+\begin{center}
+\begin{tabular}{@{}llll@{}}
+\toprule
+Machine & \#GPRs & Architecture style & Year \\
+\midrule
+Motorola 6800 & 2  & Accumulator                    & 1974 \\
+DEC VAX       & 16 & Register-Memory / Memory-Memory & 1977 \\
+Intel 8086    & 1  & Extended Accumulator            & 1978 \\
+Motorola 68000& 16 & Register-Memory                 & 1980 \\
+Intel 80386   & 32 & \textcolor{red}{Register-Memory}& 1985 \\
+Power PC      & 32 & \textcolor{blue}{Load-Store}    & 1992 \\
+Dec Alpha     & 32 & Load-Store                      & 1992 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\subsubsection{Other ISA styles}
+
+\begin{itemize}
+  \item \textbf{High-level-language architecture} (e.g.\ Burroughs B5000,
+  1960s): instructions map closely to HLL constructs. Fell out of favor due
+  to a lack of effective compilers to exploit it.
+  \item \textbf{Reduced Instruction Set (RISC) architecture}: simplify the
+  hardware, the instruction set, and the instruction format; rely on the
+  compiler to synthesize complex operations from simple ones. (Covered in
+  detail below.)
+\end{itemize}
+
+% ==========================================================================
+\subsection{Instruction Set Design}
+
+The design of an instruction set is critical to the operation of a computer
+system, and includes many aspects:
+\begin{itemize}
+  \item Operation repertoire
+  \item Addressing modes
+  \item Data types
+  \item Instruction format
+  \item Registers
+\end{itemize}
+
+\subsubsection{Simple instruction format}
+
+\begin{center}
+\begin{tikzpicture}[font=\small]
+  \draw[fill=cyan!25] (0,0) rectangle ++(1.6,0.8) node[midway]{Opcode};
+  \draw[fill=cyan!25] (1.6,0) rectangle ++(3.4,0.8) node[midway,align=center]{Source Operand\\reference};
+  \draw[fill=cyan!25] (5,0) rectangle ++(3.4,0.8) node[midway,align=center]{Result Operand\\reference};
+\end{tikzpicture}
+\end{center}
+
+\begin{definition}[Instruction fields]
+\leavevmode
+\begin{itemize}
+  \item \textbf{Operation Code}: the operation to be performed by the
+  processor.
+  \item \textbf{Source Operand Reference}: input(s) of the operation --- one
+  or more source operands can be involved.
+  \item \textbf{Result Operand Reference}: result of the operation.
+\end{itemize}
+\end{definition}
+
+\subsubsection{Instruction types}
+
+Can be classified into 4 types:
+\begin{itemize}
+  \item \textbf{Data processing}: Arithmetic, Logic \quad (e.g.\ \texttt{ADD},
+  \texttt{SUB}, \texttt{AND}, \texttt{OR}, \dots)
+  \item \textbf{Data storage}: Move data from/to memory \quad (e.g.\
+  \texttt{LD}, \texttt{ST})
+  \item \textbf{Data movement}: Register and register/IO \quad (e.g.\
+  \texttt{MOV})
+  \item \textbf{Control}: Test and branch \quad (e.g.\ \texttt{JMP},
+  \texttt{CMP})
+\end{itemize}
+
+\begin{explanation}
+\emph{``There must certainly be instructions for performing the fundamental
+arithmetic operations''} --- Burkes, Goldstine and Von Neumann, 1947.
+How many programs have an \texttt{IF} statement? $\to$ branch instructions.
+How many have a \texttt{Call} statement? $\to$ call/return instructions. How
+many programs access memory? \dots and so on: this is how an ISA's operation
+repertoire is decided.
+\end{explanation}
+
+\subsubsection{Operator types}
+
+\begin{center}
+\begin{tabular}{@{}p{3.2cm}p{10.5cm}@{}}
+\toprule
+Operator type & Example \\
+\midrule
+Arithmetic \& Logical & Integer arithmetic and logical operations: add, and,
+subtract \dots \\
+Data transfer & Loads-stores (move instructions on machines with memory
+addressing) \\
+Control & Branch, jump, procedure call and return, trap \\
+System & Operating system call, virtual memory management instructions \\
+Floating point & Floating point instructions: add, multiply \\
+Decimal & Decimal add, decimal multiply, decimal-to-character conversion \\
+String & String move, string compare, string search \\
+Graphic & Pixel operations, compression/decompression operations \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\begin{remark}
+Arithmetic, logical, data transfer and control are almost standard
+categories for all machines. System instructions are required for
+multi-programming environments (support varies). Others can be primitives
+(e.g.\ decimal and string on IBM 360 and VAX), provided by a co-processor,
+or synthesized by the compiler.
+\end{remark}
+
+% ==========================================================================
+\subsection{Addressing Modes}
+
+\begin{definition}[Addressing mode]
+The way the processor refers to the operands is called the
+\textbf{addressing mode}.
+\end{definition}
+Addressing modes can be classified based on:
+\begin{itemize}
+  \item \textbf{The source of data}: immediate, registers, memory.
+  \item \textbf{The address calculation}: direct, indirect, indexed.
+\end{itemize}
+
+\begin{center}
+\begin{tabular}{@{}p{4cm}p{7cm}l@{}}
+\toprule
+Mode & Description & Example \\
+\midrule
+Immediate & The operand is put in the instruction. & \texttt{ADD R0,\#10} \\
+Register & The index of the register containing the operand is specified in
+the instruction. & \texttt{ADD R0,R1} \\
+Direct & The address of the operand is put in the instruction. & \texttt{ADD
+R0,(100)} \\
+Register Indirect & The address of the operand is put \emph{in the register}
+specified in the instruction. & \texttt{ADD R0,(R1)} \\
+Displacement & The address of the operand is Base register $+$
+Displacement. & \texttt{LD R1,100(R2)} \\
+Indexed & The address of the operand is Base register $+$ Index register. &
+\texttt{ADD R3,(R1+R2)} \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Generic notation (pseudo-RTL) for the same set of modes:
+
+\begin{center}
+\begin{tabular}{@{}ll@{}}
+\toprule
+Mode & Example \\
+\midrule
+Immediate       & \texttt{add r1 = r2 + 5} \\
+Register        & \texttt{add r1 = r2 + r3} \\
+Direct          & \texttt{load r1 = M[4000]} \\
+Register Indirect & \texttt{add r1 = r2 + M[r2]} \\
+Displacement    & \texttt{load r1 = M[r2 + 4000]} \\
+Indexed/Base    & \texttt{add r1 = r3 + M[r2 + r3]} \\
+Memory Indirect & \texttt{load r1 = M[M[r2]]} \\
+PC Relative     & \texttt{branch r1 < r3, 1000} \\
+Scaled          & \texttt{load r1 = M[100 + r3 + r4*d]} \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\subsubsection{Addressing mode usage (SPEC89 on VAX)}
+
+\begin{center}
+\begin{tikzpicture}[font=\scriptsize]
+  \def\barh{0.22}
+  \def\scalex{0.09} % cm per percent
+  % categories from bottom to top: Displacement, Immediate, Register deferred, Scaled, Memory indirect
+  \foreach \cat/\y/\texv/\spicev/\gccv [count=\ci from 0] in
+    {Displacement/0/32/55/40,
+     Immediate/1.1/43/17/39,
+     {Register deferred}/2.2/24/3/11,
+     Scaled/3.3/0/16/6,
+     {Memory indirect}/4.4/1/6/1} {
+    \node[anchor=east] at (-0.3,\y+\barh) {\cat};
+    % TeX (pink), spice (blue), gcc (black)
+    \draw[fill=pink!70!red] (0,\y) rectangle ++(\texv*\scalex,\barh) ;
+    \node[anchor=west] at (\texv*\scalex+0.05,\y+\barh/2) {\texv\%\ TeX};
+    \draw[fill=cyan!60] (0,\y+\barh) rectangle ++(\spicev*\scalex,\barh) ;
+    \node[anchor=west] at (\spicev*\scalex+0.05,\y+1.5*\barh) {\spicev\%\ spice};
+    \draw[fill=black] (0,\y+2*\barh) rectangle ++(\gccv*\scalex,\barh) node[midway]{};
+    \node[anchor=west,text=black] at (\gccv*\scalex+0.05,\y+2.5*\barh) {\gccv\%\ gcc};
+  }
+  \draw[->] (0,-0.3) -- (0,5.4);
+  \draw[->] (0,-0.3) -- (6.0,-0.3);
+  \node[below] at (3,-0.35) {Frequency of the addressing mode};
+\end{tikzpicture}
+\end{center}
+\emph{Focus on immediate and displacement modes since they are used the
+most} across TeX, spice, and gcc.
+
+\subsubsection{Displacement value size}
+
+Measured as number of bits needed; both integer-average and
+floating-point-average workloads show most displacement values fit in a
+small number of bits, with the bulk of accesses needing $\le 15$ bits and a
+long tail:
+
+\begin{center}
+\begin{tikzpicture}[font=\scriptsize,x=0.85cm]
+  \draw[->] (0,0) -- (16.5,0);
+  \node[below] at (8,-0.55) {bits of displacement};
+  \draw[->] (0,0) -- (0,4.2) node[above]{frequency};
+  \foreach \x in {0,...,15} \node[below] at (\x+0.5,0) {\x};
+  \foreach \y in {0,10,...,40} \node[left] at (0,\y*0.1) {\y\%};
+  % integer average (approx, %): 0:38 1:3 2:1 3:3 4:8 5:11 6:8 7:8 8:4 9:2 10:1 11:1 12:1 13:19 14:6 15:11
+  \draw[blue,thick] plot[mark=square*,mark size=1.2pt] coordinates {
+    (0.5,3.8) (1.5,0.3) (2.5,0.1) (3.5,0.3) (4.5,0.8) (5.5,1.1) (6.5,0.8)
+    (7.5,0.8) (8.5,0.4) (9.5,0.2) (10.5,0.1) (11.5,0.1) (12.5,0.1) (13.5,1.9)
+    (14.5,0.6) (15.5,1.1)
+  };
+  % fp average (approx %): 0:22 1:3 2:1 3:6 4:6 5:3 6:8 7:4 8:5 9:2 10:1 11:1 12:0 13:3 14:3 15:6
+  \draw[red,thick] plot[mark=*,mark size=1.2pt] coordinates {
+    (0.5,2.2) (1.5,0.3) (2.5,0.1) (3.5,0.6) (4.5,0.6) (5.5,0.3) (6.5,0.8)
+    (7.5,0.4) (8.5,0.5) (9.5,0.2) (10.5,0.1) (11.5,0.1) (12.5,0.0) (13.5,0.3)
+    (14.5,0.3) (15.5,0.6)
+  };
+  \node[blue,anchor=west] at (2.3,3.6) {Integer average};
+  \node[red,anchor=west] at (9.5,2.1) {Floating-point average};
+\end{tikzpicture}
+\end{center}
+
+\subsubsection{Design questions raised by addressing modes}
+
+\begin{itemize}
+  \item Is Memory-indirect addressing necessary?
+  \item Is Scaled addressing necessary?
+  \item Is Register addressing necessary?
+  \item How long should a displacement value be?
+  \item How long should an immediate value be?
+\end{itemize}
+
+% ==========================================================================
+\subsection{Operand Types and Sizes}
+
+\begin{itemize}
+  \item \textbf{Character}:
+  \begin{itemize}
+    \item ASCII (8-bit): almost always used.
+    \item Unicode (16-bit): sometimes.
+  \end{itemize}
+  \item \textbf{Integer}: 2's complement.
+  \begin{itemize}
+    \item Short: 16 bit.
+    \item Long: 32 bit.
+  \end{itemize}
+  \item \textbf{Floating point}:
+  \begin{itemize}
+    \item Single precision: 32 bit.
+    \item Double precision: 64 bit.
+  \end{itemize}
+  \item \textbf{Business}: Binary Coded Decimal (BCD) -- accurately
+  represents decimal fractions.
+  \item \textbf{DSP}: Fixed point, block floating point.
+  \item \textbf{Graphic}: RGBA or XYZW, using 8-bit, 16-bit, or single
+  precision floating point components.
+\end{itemize}
+
+\begin{remark}
+Design questions: Should the CPU support all these operand types? Should it
+support very big-size operands? Is DSP data used frequently enough to add
+dedicated support? Is BCD used in most operations? How about RGBA?
+\end{remark}
+
+% ==========================================================================
+\subsection{Instruction Format}
+
+\begin{itemize}
+  \item Instructions must be encoded to binary values.
+  \item This affects the size of the compiled program.
+  \item Easy to decode $\Rightarrow$ simple to implement.
+  \item Should support as many registers and addressing modes as possible.
+\end{itemize}
+
+\begin{center}
+\begin{tikzpicture}[font=\scriptsize]
+  % variable length
+  \draw[fill=cyan!25] (0,1.6) rectangle ++(1.4,0.8) node[midway]{Opcode};
+  \draw[fill=cyan!25] (1.4,1.6) rectangle ++(1.5,0.8) node[midway,align=center]{Addr\\Specifier};
+  \draw[fill=cyan!25] (2.9,1.6) rectangle ++(1.3,0.8) node[midway,align=center]{Addr\\Field};
+  \draw[fill=cyan!25] (4.2,1.6) rectangle ++(0.6,0.8) node[midway]{\dots};
+  \draw[fill=cyan!25] (4.8,1.6) rectangle ++(1.5,0.8) node[midway,align=center]{Addr\\Specifier};
+  \draw[fill=cyan!25] (6.3,1.6) rectangle ++(1.3,0.8) node[midway,align=center]{Addr\\Field};
+  \node[right] at (7.8,2.0) {Variable instruction length (e.g.\ VAX, X86)};
+
+  % fixed length
+  \draw[fill=cyan!25] (0,0) rectangle ++(1.4,0.8) node[midway]{Opcode};
+  \draw[fill=cyan!25] (1.4,0) rectangle ++(1.7,0.8) node[midway,align=center]{Addr\\Field 1};
+  \draw[fill=cyan!25] (3.1,0) rectangle ++(1.7,0.8) node[midway,align=center]{Addr\\Field 2};
+  \draw[fill=cyan!25] (4.8,0) rectangle ++(1.7,0.8) node[midway,align=center]{Addr\\Field 3};
+  \node[right] at (6.6,0.4) {Fixed instruction length (e.g.\ ARM, MIPS, PowerPC)};
+\end{tikzpicture}
+\end{center}
+
+\begin{note}
+\textbf{Hybrid}: to gain high code density while keeping decode simple, use
+2 types of fixed-length instructions (e.g.\ MIPS16, Thumb).
+\end{note}
+
+\subsubsection{Register file}
+
+\begin{itemize}
+  \item Register is the fastest memory element.
+  \item Registers cost much more (per bit) than main memory.
+  \item Registers are flexible for the compiler to use.
+  \item More registers need more bits to encode in each instruction.
+  \item A register file with more locations can be slower to access.
+  \item Open design question: how many locations in the register file is
+  most effective?
+\end{itemize}
+
+% ==========================================================================
+\subsection{CISC vs.\ RISC}
+
+\subsubsection{Complex Instruction Set Computer (CISC)}
+
+\begin{definition}[CISC]
+A \emph{Complex Instruction Set Computer} emphasizes doing more with each
+instruction, so programs need fewer instructions (more compact code).
+\end{definition}
+\begin{itemize}
+  \item Emphasizes doing more with each instruction $\Rightarrow$ fewer
+  instructions per program (more compact code).
+  \item Motivated by the \textbf{high cost of memory} and hard-disk capacity
+  when original CISC architectures were proposed:
+  \begin{itemize}
+    \item M6800: 16K RAM = \$500, 40M hard disk = \$55{,}000.
+    \item M68000: 64K RAM = \$200, 10M HD = \$5{,}000.
+  \end{itemize}
+  \item Original CISC architectures evolved with faster, more complex CPU
+  designs, but backward instruction-set compatibility had to be maintained.
+  \item Wide variety of addressing modes: 14 in MC68000, 25 in MC68020.
+  \item A number of instruction modes for the location and number of
+  operands: the VAX has 0- through 3-address instructions.
+  \item Variable-length instruction encoding.
+\end{itemize}
+
+\begin{eg}[Motorola 680X0]
+18 addressing modes (data/address
+register direct, immediate, absolute short/long, address register indirect
+with post-/pre-increment, displacement, indexed, memory indirect
+pre-/post-indexed, PC-relative variants, \dots). GPR ISA (Register-Memory).
+Operand size ranges from 1 to 32 bits (1, 2, 4, 8, 10, or 16 bytes).
+Instructions are stored in 16-bit words; the smallest instruction is 2 bytes
+(one word); the longest is 5 words (10 bytes).
+\end{eg}
+
+\begin{eg}[Intel IA-32, x86 (80386)]
+12 addressing modes
+(register, immediate, direct, base, base+displacement,
+index+displacement, scaled-index+displacement, based index, based scaled
+index, based index+displacement, based scaled index+displacement,
+relative). GPR ISA (Register-Memory). Operand sizes 8, 16, 32, 48, 64, or 80
+bits; also supports string operations. The smallest instruction is one
+byte; the longest is 12 bytes. The first bytes generally contain the
+opcode, mode specifiers, and register fields; the remainder are for address
+displacement and immediate data.
+\end{eg}
+
+\subsubsection{Reduced Instruction Set Computer (RISC)}
+
+\begin{definition}[RISC]
+A \emph{Reduced Instruction Set Computer} focuses on reducing the number and
+complexity of instructions, aiming for $\CPI \le 1$.
+\end{definition}
+\begin{itemize}
+  \item Focuses on reducing the number and complexity of instructions.
+  \item Reduced CPI: goal of at least one instruction per clock cycle
+  (\textcolor{blue}{CPI $=1$ or less}).
+  \item Designed with pipelining in mind.
+  \item Fixed-length instruction encoding.
+  \item Only load and store instructions access memory.
+  \item \textcolor{blue}{(Thus more instructions are executed than CISC.)}
+  \item Simplified addressing modes -- usually limited to immediate,
+  register indirect, register displacement, indexed.
+  \item Delayed loads and branches.
+  \item Instruction pre-fetch and speculative execution.
+  \item Examples: MIPS, SPARC, PowerPC, Alpha.
+\end{itemize}
+
+\begin{eg}[HP Precision Architecture (HP PA-RISC)]
+7 addressing
+modes: register, immediate, base with displacement, base with scaled index
+and displacement, predecrement, postincrement, PC-relative. Five operand
+sizes ranging in powers of two from 1 to 16 bytes. Instruction set has 12
+different formats, all 32 bits in length.
+\end{eg}
+
+\begin{eg}[Alpha AXP]
+4 addressing modes: register direct,
+immediate, register indirect with displacement, PC-relative. Four operand
+sizes: 1, 2, 4, or 8 bytes. Instruction set has 7 different formats, all 32
+bits in length.
+\end{eg}
+
+% ==========================================================================
+\subsection{Case Study: MIPS}
+
+\subsubsection{Overview}
+
+\begin{itemize}
+  \item Instruction categories: Load/Store, Computational, Jump and Branch,
+  Floating Point (coprocessor), Memory Management, Special.
+  \item 3 instruction formats: all \textbf{32 bits wide}.
+\end{itemize}
+
+\begin{center}
+\begin{tikzpicture}[font=\small]
+  \node[draw,minimum width=1.6cm,minimum height=2.4cm,align=center] (regs) at (0,0) {R0 -- R31};
+  \node[above] at (0,1.35) {Registers};
+  \draw[draw,minimum width=1.6cm] (2.4,0.9) rectangle ++(1.6,0.4) node[midway]{PC};
+  \draw[draw,minimum width=1.6cm] (2.4,0.4) rectangle ++(1.6,0.4) node[midway]{HI};
+  \draw[draw,minimum width=1.6cm] (2.4,-0.1) rectangle ++(1.6,0.4) node[midway]{LO};
+\end{tikzpicture}
+
+\vspace{0.4cm}
+\begin{tikzpicture}[font=\scriptsize]
+  \draw[fill=cyan!25] (0,1.6) rectangle ++(1.2,0.8) node[midway]{OP};
+  \draw[fill=cyan!25] (1.2,1.6) rectangle ++(1.2,0.8) node[midway]{rs};
+  \draw[fill=cyan!25] (2.4,1.6) rectangle ++(1.2,0.8) node[midway]{rt};
+  \draw[fill=cyan!25] (3.6,1.6) rectangle ++(1.2,0.8) node[midway]{rd};
+  \draw[fill=cyan!25] (4.8,1.6) rectangle ++(1.2,0.8) node[midway]{shamt};
+  \draw[fill=cyan!25] (6.0,1.6) rectangle ++(1.2,0.8) node[midway]{funct};
+  \node[right] at (7.4,2.0) {R-format};
+
+  \draw[fill=cyan!25] (0,0.4) rectangle ++(1.2,0.8) node[midway]{OP};
+  \draw[fill=cyan!25] (1.2,0.4) rectangle ++(1.2,0.8) node[midway]{rs};
+  \draw[fill=cyan!25] (2.4,0.4) rectangle ++(1.2,0.8) node[midway]{rt};
+  \draw[fill=cyan!25] (3.6,0.4) rectangle ++(3.6,0.8) node[midway]{immediate};
+  \node[right] at (7.4,0.8) {I-format};
+
+  \draw[fill=cyan!25] (0,-0.8) rectangle ++(1.2,0.8) node[midway]{OP};
+  \draw[fill=cyan!25] (1.2,-0.8) rectangle ++(6,0.8) node[midway]{jump target};
+  \node[right] at (7.4,-0.4) {J-format};
+\end{tikzpicture}
+\end{center}
+
+\subsubsection{MIPS (RISC) design principles}
+
+\begin{noot}{MIPS (RISC) design principles}
+\begin{itemize}
+  \item \textbf{Simplicity favors regularity}: fixed-size instructions,
+  small number of instruction formats, opcode always in the first 6 bits.
+  \item \textbf{Smaller is faster}: limited instruction set, limited number
+  of registers in the register file, limited number of addressing modes.
+  \item \textbf{Make the common case fast}: arithmetic operands from the
+  register file (load-store machine), allow instructions to contain
+  immediate operands.
+  \item \textbf{Good design demands good compromises}: same instruction
+  length, single instruction format $\Rightarrow$ compromise of exactly 3
+  instruction formats.
+\end{itemize}
+\end{noot}
+
+\subsubsection{MIPS instruction-class distribution (SPEC2006)}
+
+\begin{center}
+\begin{tabular}{@{}lcc@{}}
+\toprule
+Instruction Class & Integer & Floating Point \\
+\midrule
+Arithmetic    & 16\% & 48\% \\
+Data transfer & 35\% & 36\% \\
+Logical       & 12\% & 4\%  \\
+Cond.\ Branch & 34\% & 8\%  \\
+Jump          & 2\%  & 0\%  \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\subsubsection{MIPS register convention}
+
+\begin{center}
+\begin{tabular}{@{}llll@{}}
+\toprule
+Name & Register \# & Usage & Preserve on call? \\
+\midrule
+\$zero      & 0     & constant 0 (hardware)         & n.a. \\
+\$at        & 1     & reserved for assembler        & n.a. \\
+\$v0--\$v1  & 2--3  & returned values                & no \\
+\$a0--\$a3  & 4--7  & arguments                      & yes \\
+\$t0--\$t7  & 8--15 & temporaries                    & no \\
+\$s0--\$s7  & 16--23& saved values                   & yes \\
+\$t8--\$t9  & 24--25& temporaries                    & no \\
+\$k0--\$k1  & 26--27& reserved for operating system  & n.a. \\
+\$gp        & 28    & global pointer                 & yes \\
+\$sp        & 29    & stack pointer                  & yes \\
+\$fp        & 30    & frame pointer                  & yes \\
+\$ra        & 31    & return address (hardware)      & yes \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\subsubsection{MIPS endianness}
+
+\begin{center}
+\begin{tikzpicture}[font=\scriptsize,>=Stealth]
+  % Big endian
+  \node at (0,3.3) {\textbf{Big-endian}};
+  \node[draw,minimum width=1.6cm] (reg) at (0,2.2) {0A0B0C0D};
+  \node[above] at (0,2.7) {Register};
+  \foreach \i/\v [count=\y from 0] in {0/0A,1/0B,2/0C,3/0D} {
+    \node[draw,minimum width=1.1cm,anchor=west] (m\i) at (-0.9,1.2-\y*0.45) {\v};
+    \node[left=0.05cm of m\i] {$a{+}\i$:};
+  }
+  \draw[->] (reg.220) .. controls +(-1,-0.3) .. (m0.east);
+  \draw[->] (reg.200) .. controls +(-1.3,-0.9) .. (m1.east);
+  \draw[->] (reg.250) .. controls +(-0.6,-0.2) .. (m2.east);
+  \draw[->] (reg.260) .. controls +(-0.3,-0.1) .. (m3.east);
+
+  % Little endian
+  \node at (5.5,3.3) {\textbf{Little-endian}};
+  \node[draw,minimum width=1.6cm] (reg2) at (5.5,2.2) {0A0B0C0D};
+  \node[above] at (5.5,2.7) {Register};
+  \foreach \i/\v [count=\y from 0] in {0/0D,1/0C,2/0B,3/0A} {
+    \node[draw,minimum width=1.1cm,anchor=west] (n\i) at (6.4,1.2-\y*0.45) {\v};
+    \node[left=0.05cm of n\i] {$a{+}\i$:};
+  }
+  \draw[->] (reg2.320) .. controls +(1,-0.3) .. (n0.west);
+  \draw[->] (reg2.340) .. controls +(1.3,-0.9) .. (n1.west);
+  \draw[->] (reg2.290) .. controls +(0.6,-0.2) .. (n2.west);
+  \draw[->] (reg2.280) .. controls +(0.3,-0.1) .. (n3.west);
+\end{tikzpicture}
+\end{center}
+
+\begin{definition}[Endianness]
+\leavevmode
+\begin{itemize}
+  \item \textbf{Big-endian}: most-significant byte at the lowest address of
+  a word.
+  \item \textbf{Little-endian}: least-significant byte at the lowest
+  address of a word.
+  \item \textbf{MIPS is big-endian.}
+\end{itemize}
+\end{definition}
+
+\subsubsection{R-Format instructions}
+
+\begin{center}
+\begin{tikzpicture}[font=\scriptsize]
+  \draw[fill=cyan!25] (0,0) rectangle ++(1.2,0.8) node[midway]{Op};
+  \draw[fill=cyan!25] (1.2,0) rectangle ++(1.2,0.8) node[midway]{Rs};
+  \draw[fill=cyan!25] (2.4,0) rectangle ++(1.2,0.8) node[midway]{Rt};
+  \draw[fill=cyan!25] (3.6,0) rectangle ++(1.2,0.8) node[midway]{Rd};
+  \draw[fill=cyan!25] (4.8,0) rectangle ++(1.2,0.8) node[midway]{Shamt};
+  \draw[fill=cyan!25] (6.0,0) rectangle ++(1.2,0.8) node[midway]{Funct};
+\end{tikzpicture}
+\end{center}
+
+\begin{definition}[R-format fields]
+\leavevmode
+\begin{itemize}
+  \item \textbf{Op}: opcode.
+  \item \textbf{Rs}: first source register number.
+  \item \textbf{Rt}: second source register number.
+  \item \textbf{Rd}: destination register number.
+  \item \textbf{Shamt}: shift amount (number of bit positions, left/right).
+  \item \textbf{Funct}: extended opcode -- the ALU function that encodes the
+  datapath operation. Execution: \texttt{Rd <- Rs func Rt}.
+\end{itemize}
+\end{definition}
+
+For arithmetic and logical instructions the opcode is always
+\texttt{SPECIAL} (\texttt{000000}), and \texttt{Funct} indicates the
+specific operation.
+
+\begin{eg}[Encoding \texttt{ADD \$t0, \$s1, \$s2}]
+\leavevmode
+\begin{lstlisting}
+ADD $t0, $s1, $s2
+\end{lstlisting}
+\begin{center}
+\begin{tikzpicture}[font=\scriptsize]
+  \foreach \x/\w/\lab in {0/1.2/Special,1.2/1.2/{\$s1},2.4/1.2/{\$s2},3.6/1.2/{\$t0},4.8/1.2/0,6.0/1.2/add}
+    \draw[fill=cyan!25] (\x,0.9) rectangle ++(\w,0.7) node[midway]{\lab};
+  \foreach \x/\w/\lab in {0/1.2/0,1.2/1.2/17,2.4/1.2/18,3.6/1.2/8,4.8/1.2/0,6.0/1.2/32}
+    \draw[fill=cyan!10] (\x,0) rectangle ++(\w,0.7) node[midway]{\lab};
+\end{tikzpicture}
+\end{center}
+Binary: \texttt{000000 10001 10010 01000 00000 100000} \quad =\quad
+\texttt{0x02324020}.
+\end{eg}
+
+\subsubsection{Logical operations}
+
+\texttt{AND, OR, XOR, NOR} (bit-wise).
+\begin{lstlisting}
+OR $t0, $t1, $t2    # $t0 = $t1 | $t2
+\end{lstlisting}
+Shift left / shift right: \texttt{Shamt} indicates the number of bits to
+shift.
+\begin{eg}[Shift left logical]
+\leavevmode
+\begin{lstlisting}
+SLL $t2, $s0, 8
+\end{lstlisting}
+Encoding: \texttt{000000 00000 10000 01010 01000 000000}.
+\end{eg}
+
+\texttt{Shift Right Arithmetic (SRA)} uses the MSB as the shift-in bit
+(sign-extending):
+\begin{eg}[Shift right arithmetic]
+\leavevmode
+\begin{lstlisting}
+SRA $t2, $s0, 8
+\end{lstlisting}
+Encoding: \texttt{000000 00000 10000 01010 01000 000011}.
+\end{eg}
+
+\begin{remark}
+Design questions: why is there no \texttt{SLA} (shift-left-arithmetic)?
+Why is there no \texttt{NOT}?
+\end{remark}
+
+\subsubsection{Jump register}
+
+Uses \textbf{register indirect addressing}.
+\begin{itemize}
+  \item \texttt{JR rs}: jump register. \texttt{Rs} = target address;
+  \texttt{Rd}, \texttt{Rt} $= 0$; \texttt{shamt} is a hint field (see the MIPS instruction set reference).
+  \item \texttt{JALR rs} / \texttt{JALR rd, rs}: jump and link register.
+  \texttt{Rs} = target address; \texttt{Rd} = return address; \texttt{Rt}
+  $=0$; \texttt{shamt} is a hint field.
+\end{itemize}
+
+\subsubsection{I-Format instructions}
+
+\begin{center}
+\begin{tikzpicture}[font=\scriptsize]
+  \draw[fill=cyan!25] (0,0) rectangle ++(1.5,0.8) node[midway]{Opcode};
+  \draw[fill=cyan!25] (1.5,0) rectangle ++(1.5,0.8) node[midway]{Rs};
+  \draw[fill=cyan!25] (3.0,0) rectangle ++(1.5,0.8) node[midway]{Rt};
+  \draw[fill=cyan!25] (4.5,0) rectangle ++(3.5,0.8) node[midway]{16-bit immediate value};
+\end{tikzpicture}
+\end{center}
+
+This format is used for:
+\begin{itemize}
+  \item Operation with immediate addressing.
+  \item Operation with displacement addressing.
+  \item Operation with PC-relative addressing.
+\end{itemize}
+
+\begin{eg}[Immediate arithmetic and logical]
+\texttt{Op}: opcode;
+\texttt{Rs}: source register; \texttt{Rt}: destination register;
+\texttt{Constant}: immediate value ($-32768$ to $32767$).
+\begin{lstlisting}
+ADDI $t0, $t1, 0x0005
+ORI  $t0, $t1, 0xFF00
+\end{lstlisting}
+Encodings:
+\begin{center}
+\texttt{001000 01001 01000 0000000000000101}\\
+\texttt{001101 01001 01000 1111111100000000}
+\end{center}
+(Design question: why is there no \texttt{SUBI}?)
+\end{eg}
+
+\begin{eg}[Load-Store (displacement)]
+\texttt{Rs}: base register number;
+16-bit immediate value: offset added to the base address in \texttt{Rs}.
+Effective address $EA = Rs + \text{16-bit immediate value}$. For loads,
+\texttt{Rt} is the destination register; for stores, \texttt{Rt} is the
+value stored to the \texttt{EA} in memory.
+\begin{lstlisting}
+LW $t0, 16($t1)
+SW $t0, 16($t1)
+\end{lstlisting}
+Encodings:
+\begin{center}
+\texttt{100011 01001 01000 0000000000010000}\\
+\texttt{101011 01001 01000 0000000000010000}
+\end{center}
+\end{eg}
+
+\begin{eg}[PC-relative (near branches)]
+\texttt{Rs}, \texttt{Rt}: source
+register numbers; target address $=$ \texttt{PC} $+$ offset $\times 4$ (PC
+already incremented by 4 at this time).
+\begin{lstlisting}
+BEQ $s0, $s1, 256    # if ($s0 == $s1) goto PC + 256*4;
+\end{lstlisting}
+Encoding: \texttt{000100 10000 10001 0000000100000000}.
+\end{eg}
+
+\subsubsection{J-Format instructions}
+
+\begin{center}
+\begin{tikzpicture}[font=\scriptsize]
+  \draw[fill=cyan!25] (0,0) rectangle ++(1.5,0.8) node[midway]{Opcode};
+  \draw[fill=cyan!25] (1.5,0) rectangle ++(5.5,0.8) node[midway]{26-bit Offset};
+\end{tikzpicture}
+\end{center}
+
+Used for \texttt{J} and \texttt{JAL} -- \textbf{pseudo-direct addressing}.
+Cannot fit a 32-bit value in the instruction, so target address $=
+PC_{31\ldots28} \,\Vert\, (\text{26-bit offset} \times 4)$.
+\begin{eg}[Jump]
+\leavevmode
+\begin{lstlisting}
+J 0x01000000
+\end{lstlisting}
+Encoding: \texttt{000010 01000000000000000000000000}.
+\end{eg}
+
+\subsubsection{Moving data without a MOV instruction}
+
+\begin{eg}[Move without MOV]
+How to move data from \texttt{\$t0} to \texttt{\$t1} using one MIPS
+instruction? MIPS has no dedicated \texttt{MOV}, so it is synthesized:
+\[
+  \texttt{MOV \$t1, \$t0} \;\equiv\; \texttt{add \$t1, \$t0, \$zero}
+\]
+\end{eg}
+
+\subsubsection{Atomic operations}
+
+\begin{definition}[Load linked / store conditional]
+An atomic Read-Modify-Write operation is built from a pair of instructions:
+\texttt{LL} (Load Linked Word) and \texttt{SC} (Store Conditional Word).
+\begin{lstlisting}
+LL $Rt, offset($Rs)
+SC $Rt, offset($Rs)
+\end{lstlisting}
+If the memory word addressed by \texttt{LL} is modified before the matching
+\texttt{SC} to the same address, \texttt{SC} \emph{fails} and returns 0 in
+\texttt{\$Rt}. Otherwise, \texttt{SC} stores \texttt{\$Rt} to memory and
+returns 1 in \texttt{\$Rt}.
+\end{definition}
+
+\begin{eg}[Atomic swap]
+\leavevmode
+\begin{lstlisting}
+try:  ADD $t0, $zero, $s4   # $t0 = $s4
+      LL  $t1, 0($s1)       # $t1 = mem($s1)
+      SC  $t0, 0($s1)       # mem($s1) = $t0 (if uncontended)
+      BEQ $t0, $zero, try   # if mem($s1) changed meanwhile, retry
+                             # else mem($s1) = old $t0
+      ADD $s4, $zero, $t1   # $s4 = $t1
+\end{lstlisting}
+\end{eg}
+
+\subsubsection{Constant (immediate) values}
+
+Small constants are used quite frequently ($\approx 50\%$ of operands in
+many common programs):
+\begin{eg}[Small and large constants]
+\leavevmode
+\begin{lstlisting}
+# $t0 = 0x1234
+ADDI $t0, $zero, 0x1234
+\end{lstlisting}
+For a 32-bit constant that does not fit in the 16-bit immediate field, use
+\texttt{LUI} (Load Upper Immediate) followed by \texttt{ORI}:
+\begin{lstlisting}
+# $t0 = 0x12345678
+LUI $t0, 0x1234
+ORI $t0, $t0, 0x5678
+\end{lstlisting}
+\end{eg}
+
+\subsubsection{Procedure call convention}
+
+\begin{definition}[Procedure call convention]
+\leavevmode
+\begin{enumerate}
+  \item Save the return address.
+  \item Save necessary registers.
+  \item Callee executes the function.
+  \item Restore previously saved registers.
+  \item Restore the return address.
+  \item Jump to the return address.
+\end{enumerate}
+\end{definition}
+\begin{itemize}
+  \item \texttt{JAL label}: jump to a label (procedure); the return address
+  is stored in \texttt{\$ra} (register 31).
+  \item \texttt{JR}: jump to the address stored in a register.
+\end{itemize}
+
+\begin{eg}[Array element swap]
+\leavevmode
+\begin{lstlisting}
+swap(int v[], int k)
+{
+    int temp;
+    temp   = v[k];
+    v[k]   = v[k+1];
+    v[k+1] = temp;
+}
+\end{lstlisting}
+Assume \texttt{swap} is called as a procedure; \texttt{temp} is register
+\texttt{\$15}; arguments in \texttt{\$a1}, \texttt{\$a2}; \texttt{\$16} is a
+scratch register.
+
+\begin{lstlisting}
+swap:
+    addi $sp,$sp,-4     ; create space on stack
+    sw   $16, 0($sp)    ; callee-saved register put onto stack
+    sll  $t2, $a2,2     ; multiply k by 4
+    addu $t2, $a1,$t2   ; address of v[k]
+    lw   $15, 0($t2)    ; load v[k]
+    lw   $16, 4($t2)    ; load v[k+1]
+    sw   $16, 0($t2)    ; store v[k+1] into v[k]
+    sw   $15, 4($t2)    ; store old value of v[k] into v[k+1]
+    lw   $16, 0($sp)    ; callee-saved register restored from stack
+    addi $sp,$sp, 4     ; restore top of stack
+    jr   $31            ; return to place that called swap
+\end{lstlisting}
+\end{eg}
+
+\begin{eg}[Recursive factorial]
+\leavevmode
+\begin{lstlisting}
+fact:
+    addi $sp, $sp, -8   # adjust stack for 2 items
+    sw   $ra, 4($sp)    # save return address
+    sw   $a0, 0($sp)    # save argument
+
+    slti $t0, $a0, 1    # test for n < 1
+    beq  $t0, $zero, L1
+
+    addi $v0, $zero, 1  # if so, result is 1
+    addi $sp, $sp, 8     #   pop 2 items from stack
+    jr   $ra             #   and return
+
+L1: addi $a0, $a0, -1   # else decrement n
+    jal  fact             # recursive call
+
+    lw   $a0, 0($sp)    # restore original n
+    lw   $ra, 4($sp)    #   and return address
+    addi $sp, $sp, 8    # pop 2 items from stack
+
+    mul  $v0, $a0, $v0  # multiply to get result n*fact(n-1)
+    jr   $ra             # and return
+\end{lstlisting}
+\end{eg}
+
+\subsubsection{Reference tables}
+
+\begin{center}
+\begin{tabular}{@{}p{2.6cm}p{2.6cm}p{3.3cm}p{4.6cm}@{}}
+\toprule
+Instruction & Example & Meaning & Comment \\
+\midrule
+add            & \texttt{add \$1,\$2,\$3}   & \$1 = \$2 + \$3 & 3 operands; exception possible \\
+subtract       & \texttt{sub \$1,\$2,\$3}   & \$1 = \$2 -- \$3 & 3 operands; exception possible \\
+add immediate  & \texttt{addi \$1,\$2,100}  & \$1 = \$2 + 100 & + constant; exception possible \\
+add unsigned   & \texttt{addu \$1,\$2,\$3}  & \$1 = \$2 + \$3 & 3 operands; no exceptions \\
+subtract unsigned & \texttt{subu \$1,\$2,\$3} & \$1 = \$2 -- \$3 & 3 operands; no exceptions \\
+add imm.\ unsign. & \texttt{addiu \$1,\$2,100} & \$1 = \$2 + 100 & + constant; no exceptions \\
+multiply       & \texttt{mult \$2,\$3}      & Hi,Lo = \$2 $\times$ \$3 & 64-bit signed product \\
+multiply unsigned & \texttt{multu \$2,\$3}  & Hi,Lo = \$2 $\times$ \$3 & 64-bit unsigned product \\
+divide         & \texttt{div \$2,\$3}       & Lo=\$2$\div$\$3, Hi=\$2 mod \$3 & Lo=quotient, Hi=remainder \\
+divide unsigned & \texttt{divu \$2,\$3}     & Lo=\$2$\div$\$3, Hi=\$2 mod \$3 & unsigned quotient \& remainder \\
+move from Hi   & \texttt{mfhi \$1}          & \$1 = Hi & used to get copy of Hi \\
+move from Lo   & \texttt{mflo \$1}          & \$1 = Lo & used to get copy of Lo \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\begin{center}
+\begin{tabular}{@{}p{2.9cm}p{2.5cm}p{3cm}p{4.3cm}@{}}
+\toprule
+Instruction & Example & Meaning & Comment \\
+\midrule
+and            & \texttt{and \$1,\$2,\$3}  & \$1=\$2\&\$3       & 3 reg.\ operands; logical AND \\
+or             & \texttt{or \$1,\$2,\$3}   & \$1=\$2\textbar\$3 & 3 reg.\ operands; logical OR \\
+xor            & \texttt{xor \$1,\$2,\$3}  & \$1=\$2$\oplus$\$3 & 3 reg.\ operands; logical XOR \\
+nor            & \texttt{nor \$1,\$2,\$3}  & \$1=$\sim$(\$2\textbar\$3) & 3 reg.\ operands; logical NOR \\
+and immediate  & \texttt{andi \$1,\$2,10}  & \$1=\$2\&10        & logical AND reg, constant \\
+or immediate   & \texttt{ori \$1,\$2,10}   & \$1=\$2\textbar10  & logical OR reg, constant \\
+xor immediate  & \texttt{xori \$1,\$2,10}  & \$1=$\sim$\$2\&$\sim$10 & logical XOR reg, constant \\
+shift left logical & \texttt{sll \$1,\$2,10} & \$1=\$2\textless\textless10 & shift left by constant \\
+shift right logical & \texttt{srl \$1,\$2,10} & \$1=\$2\textgreater\textgreater10 & shift right by constant \\
+shift right arithm. & \texttt{sra \$1,\$2,10} & \$1=\$2\textgreater\textgreater10 & shift right (sign extend) \\
+shift left logical (var) & \texttt{sllv \$1,\$2,\$3} & \$1=\$2\textless\textless\$3 & shift left by variable \\
+shift right logical (var) & \texttt{srlv \$1,\$2,\$3} & \$1=\$2\textgreater\textgreater\$3 & shift right by variable \\
+shift right arithm.\ (var) & \texttt{srav \$1,\$2,\$3} & \$1=\$2\textgreater\textgreater\$3 & shift right arith.\ by variable \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\begin{center}
+\begin{tabular}{@{}ll@{}}
+\toprule
+Instruction & Comment \\
+\midrule
+\texttt{SW 500(R4), R3} & Store word \\
+\texttt{SH 502(R2), R3} & Store half \\
+\texttt{SB 41(R3), R2}  & Store byte \\
+\texttt{LW R1, 30(R2)}  & Load word \\
+\texttt{LH R1, 40(R3)}  & Load halfword \\
+\texttt{LHU R1, 40(R3)} & Load halfword unsigned \\
+\texttt{LB R1, 40(R3)}  & Load byte \\
+\texttt{LBU R1, 40(R3)} & Load byte unsigned \\
+\texttt{LUI R1, 40}     & Load upper immediate (16 bits shifted left by 16) \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\begin{center}
+\begin{tabular}{@{}lll@{}}
+\toprule
+& & \\
+\midrule
+Compare and Branch & \texttt{BEQ rs,rt,offset} & if R[rs]==R[rt] then PC-relative branch \\
+                    & \texttt{BNE rs,rt,offset} & \dots not-equal ($\neq$) \\
+                    & \texttt{BLEZ rs,offset}   & if R[rs] $\le$ 0 then PC-relative branch \\
+                    & \texttt{BGTZ rs,offset}   & \dots greater-than ($>$) \\
+                    & \texttt{BLTZ rs,offset}   & \dots less-than ($<$) \\
+                    & \texttt{BGEZ rs,offset}   & \dots greater-or-equal ($\ge$) \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\begin{center}
+\begin{tabular}{@{}p{2.7cm}p{3cm}p{7.2cm}@{}}
+\toprule
+Instruction & Example & Meaning \\
+\midrule
+branch on equal & \texttt{beq \$1,\$2,100} & if (\$1==\$2) go to PC+4+100; equal test; PC-relative branch \\
+branch on not eq.\ & \texttt{bne \$1,\$2,100} & if (\$1!=\$2) go to PC+4+100; not-equal test; PC-relative \\
+set on less than & \texttt{slt \$1,\$2,\$3} & if (\$2<\$3) \$1=1; else \$1=0; compare less than; 2's comp. \\
+set less than imm. & \texttt{slti \$1,\$2,100} & if (\$2<100) \$1=1; else \$1=0; compare~<~constant; 2's comp. \\
+set less than uns. & \texttt{sltu \$1,\$2,\$3} & if (\$2<\$3) \$1=1; else \$1=0; compare less than; natural no.\ \\
+set l.t.\ imm.\ uns. & \texttt{sltiu \$1,\$2,100} & if (\$2<100) \$1=1; else \$1=0; compare~<~constant; natural \\
+jump            & \texttt{j 10000}   & go to 10000; jump to target address \\
+jump register   & \texttt{jr \$31}   & go to \$31; for switch, procedure return \\
+jump and link   & \texttt{jal 10000} & \$31 = PC+4; go to 10000; for procedure call \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\subsubsection{Assembler directives and example programs}
+
+\begin{definition}[Assembler directives]
+Common assembler (GAS/SPIM-style) directives: \texttt{.text} (code
+section), \texttt{.data} (data section), \texttt{.globl} (export a label),
+\texttt{.word} (a 32-bit word constant), \texttt{.space} (reserve $n$
+bytes).
+\end{definition}
+
+\begin{eg}[Adding two constants]
+\leavevmode
+\begin{lstlisting}
+.text
+.globl main
+main:
+    li   $t0, 0x2         # $t0 <- 0x2
+    li   $t1, 0x3         # $t1 <- 0x3
+    addu $t2, $t0, $t1    # $t2 <- ADD($t0, $t1)
+\end{lstlisting}
+which is equivalent to (\texttt{li} pseudo-instruction expanded):
+\begin{lstlisting}
+.text
+.globl main
+main:
+    ori  $t0, $0, 0x2     # $t0 <- OR(0, 0x2)
+    ori  $t1, $0, 0x3     # $t1 <- OR(0, 0x3)
+    addu $t2, $t0, $t1    # $t2 <- ADD($t0, $t1)
+\end{lstlisting}
+\end{eg}
+
+\begin{eg}[Using labeled data]
+\leavevmode
+\begin{lstlisting}
+.data
+n:  .word 0x2
+m:  .word 0x3
+r:  .space 4
+
+.text
+.globl main
+main:
+    lw   $t0, n            # load n to $t0
+    lw   $t1, m            # load m to $t1
+    addu $t2, $t0, $t1     # $t2 <- ADD($t0, $t1)
+    sw   $t2, r            # store $t2 to r
+\end{lstlisting}
+\end{eg}
+
+\begin{eg}[Indexing into an array (\texttt{la} + displacement)]
+\leavevmode
+\begin{lstlisting}
+.data
+n:  .word 0x2, 0x3, 0x4
+
+.text
+.globl main
+main:
+    la   $t5, n             # load address of n to $t5
+    lw   $t0, 0($t5)        # load n[0] to $t0
+    lw   $t1, 4($t5)        # load n[1] to $t1
+    addu $t2, $t0, $t1      # $t2 <- ADD($t0, $t1)
+    sw   $t2, 8($t5)        # store $t2 to n[2]
+\end{lstlisting}
+\end{eg}
+
+\subsubsection{Using the SPIM simulator}
+
+A typical SPIM (QtSpim) workflow to assemble, run, and debug MIPS code:
+\begin{enumerate}
+  \item \textbf{Start SPIM}: the window shows the integer/FP register file,
+  the program's text segment (disassembly), and a message log.
+  \item \textbf{Load a program}: \emph{File $\to$ Reinitialize and Load
+  File}, then select your assembly (\texttt{.s}) file.
+  \item \textbf{Execute}: step or run; the current instruction is
+  highlighted, and register changes from the previous instruction are shown.
+  \item \textbf{Inspect data}: the \emph{Data} tab shows the user data
+  segment and stack contents in memory.
+  \item \textbf{Set a breakpoint}: right-click an instruction in the text
+  segment and choose \emph{Set Breakpoint} (e.g.\ at a conditional branch).
+  \item \textbf{Single-step}: use the step button (F10) to execute the
+  program line by line and watch register/memory state evolve.
+\end{enumerate}
+
+\subsubsection{Reference}
+\emph{MIPS instruction set reference}, course handout
+(\texttt{references/mips-reference-data.pdf}); see also the reformatted
+version, \texttt{references/mips-reference-readable.pdf}.
+
+% ==========================================================================
+\subsection{Exercises}
+
+These are left unresolved for self-study.
+
+\begin{exercise}[Procedure-call convention]
+\leavevmode
+\begin{enumerate}[label=(\arabic*)]
+  \item Which one, caller or callee, has to save the return address?
+  \item Which one, caller or callee, has to save necessary (callee-saved)
+  registers?
+  \item Is it necessary for a leaf procedure to save the return address (in
+  MIPS)? Justify your answer.
+\end{enumerate}
+\end{exercise}
+
+\begin{exercise}[Review quiz]
+{\arialfont Trong hợp ngữ MIPS, có thể thực hiện phép toán \texttt{NOT} bằng:
+\begin{enumerate}[label=\alph*.]
+\item Lệnh \texttt{NOT}
+\item Lệnh \texttt{NOR}
+\item Lệnh \texttt{NAND}
+\item Tất cả đều sai
+\end{enumerate}}
+\end{exercise}
+
+\begin{exercise}[Review quiz]
+{\arialfont Chế độ định địa chỉ (addressing mode) là:
+\begin{enumerate}[label=\alph*.]
+\item Cách tham khảo đến toán hạng/ lệnh (nếu là lệnh nhảy)
+\item Cách tổ chức địa chỉ bộ nhớ theo byte/halfword/word
+\item Cách sắp xếp thứ tự bộ nhớ (endianness)
+\item Tất cả đều đúng
+\end{enumerate}}
+\end{exercise}
+
+\begin{exercise}[Review quiz]
+{\arialfont Thanh ghi \texttt{LO}, \texttt{HI} trong MIPS dùng để:
+\begin{enumerate}[label=\alph*.]
+\item Tính địa chỉ thấp, cao
+\item Thao tác phép nhân, chia
+\item Cả a và b đều đúng
+\item Cả a và b đều sai
+\end{enumerate}}
+\end{exercise}
+
+\begin{exercise}[Review quiz]
+{\arialfont Kiến trúc MIPS là kiến trúc có kiểu lưu trữ:
+\begin{enumerate}[label=\alph*.]
+\item Little-Endian
+\item Big-Endian
+\item Hỗ trợ cả hai kiểu trên
+\item Không hỗ trợ Endian
+\end{enumerate}}
+\end{exercise}
+
+\begin{exercise}[C-to-MIPS translation]
+Consider the following C code fragment:
+\begin{lstlisting}
+if (a == 0) {
+    a = 1;
+} else {
+    a = 0;
+}
+\end{lstlisting}
+
+\textbf{Q10)} Which of the following MIPS instruction sequences performs
+the \emph{same} operation as the given code fragment? (Select all that
+apply, and justify why the others are wrong.)
+
+\begin{center}
+\begin{minipage}[t]{0.48\linewidth}
+(A)
+\begin{lstlisting}
+lw   $t0,a
+bne  $t0,$0,L1
+addi $t0,$0,1
+b    L2
+L1: add $t0,$0,$0
+L2: sw   $t0,a
+\end{lstlisting}
+\end{minipage}\hfill
+\begin{minipage}[t]{0.48\linewidth}
+(B)
+\begin{lstlisting}
+lw   $t0,a
+beq  $t0,$0,L1
+sw   $0,a
+b    L2
+L1: addi $t0,$0,1
+    sw   $t0,a
+L2:
+\end{lstlisting}
+\end{minipage}
+
+\vspace{0.4cm}
+
+\begin{minipage}[t]{0.48\linewidth}
+(C)
+\begin{lstlisting}
+lw    $t0,a
+sltiu $t0,$t0,1
+sw    $t0,a
+\end{lstlisting}
+\end{minipage}\hfill
+\begin{minipage}[t]{0.48\linewidth}
+(D)
+\begin{lstlisting}
+lw   $t0,a
+addi $t1,$0,1
+beq  $t0,$0,L1
+addi $t1,$0,0
+L1: sw   $t1,a
+\end{lstlisting}
+\end{minipage}
+
+\vspace{0.4cm}
+(E) All of the above
+\end{center}
+\end{exercise}
+
+% ==========================================================================
+\subsection{Summary}
+
+\begin{itemize}[leftmargin=*]
+  \item The ISA is the interface between software and hardware; ISA styles
+  differ in where operands live (stack, accumulator, memory, registers).
+  Modern ISAs are load-store (register-register).
+  \item Instruction set design covers operations, addressing modes, operand
+  types, encoding (fixed vs.\ variable length), and the register file.
+  Immediate and displacement addressing dominate real programs.
+  \item CISC packs more work per instruction; RISC keeps instructions simple
+  and regular to enable pipelining and $\CPI\approx 1$.
+  \item MIPS: 32 registers, three 32-bit formats (R, I, J), big-endian,
+  load-store, with a register convention that splits caller-/callee-saved
+  registers for procedure calls.
+\end{itemize}

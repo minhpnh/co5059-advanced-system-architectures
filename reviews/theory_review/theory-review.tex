@@ -1,0 +1,441 @@
+% !TeX program = xelatex
+\documentclass[11pt]{article}
+\newcommand{\notesdir}{../../lecture-notes}
+\input{../../lecture-notes/preamble}
+
+\begin{document}
+\sloppy
+\makecover{Quiz Review: Theory}{Condensed theory from Lectures 1--3
+(performance \& cost, instruction set architecture, pipelining): the
+definitions, facts, comparisons and reasons most likely to be asked, followed
+by a self-check question bank with answers.}
+
+% ============================================================================
+\section{Lecture 1: Computer Architecture, Performance and Cost}
+
+\subsection{What computer architecture is}
+\begin{definition}[Computer architect]
+Designs and engineers the levels of a computer system to maximize
+\textbf{performance} and \textbf{programmability} within the limits of
+\textbf{technology} and \textbf{cost}. Tasks: instruction set design,
+functional organization, logic design, implementation (IC design, packaging,
+power, cooling).
+\end{definition}
+\begin{itemize}[leftmargin=*]
+  \item The focus has shifted: arithmetic (1950s--60s) $\to$ ISA design
+  (70s--80s) $\to$ CPU/memory/I/O/multiprocessors (90s) $\to$ multicore,
+  on-chip networks, power (2000s) $\to$ low-power/mobile (2010s) $\to$ AI chips,
+  quantum (2020s).
+  \item \textbf{Levels of abstraction}: software (applications, compiler,
+  assembler, OS, linker/loader, drivers) above the \textbf{ISA}, hardware
+  (processor, memory, I/O, datapath \& control, logic, circuits, layout)
+  below. The ISA is the hardware/software interface: one ISA, many
+  implementations.
+  \item \textbf{Von Neumann / stored-program computer} (EDSAC, 1949): the
+  same memory holds instructions and data -- still the basic design today.
+\end{itemize}
+
+\subsection{Technology trends and the multicore shift}
+\begin{itemize}[leftmargin=*]
+  \item \textbf{Moore's Law}: transistors per cost-effective chip double
+  every 18--24 months.
+  \item Uniprocessor performance grew $\sim$25\%/yr (VAX era), $\sim$52\%/yr
+  (RISC/x86, 1986--2002), then slowed sharply.
+  \item \textbf{Power wall}: power is expensive, transistors are cheap.
+  \textbf{ILP wall}: diminishing returns from more hardware for
+  instruction-level parallelism. \textbf{Memory wall}: memory is slow
+  ($\sim$200 cycles) relative to arithmetic. Together: the \textbf{brick
+  wall}.
+  \item Result: industry moved to \textbf{multicore} -- many simpler cores are
+  more power-efficient than one complex core (``the processor is the new
+  transistor''). The hard part is software: programming many cores.
+\end{itemize}
+
+\subsection{The design cycle}
+Evaluate existing systems for bottlenecks (\textbf{performance}, using
+\emph{benchmarks}) $\to$ simulate new designs (\textbf{technology}, using
+\emph{workloads}) $\to$ implement the next generation (\textbf{cost},
+\emph{implementation complexity}) $\to$ repeat.
+
+\subsection{Measuring performance}
+\begin{definition}[Latency vs.\ throughput]
+\textbf{Latency} (execution/response time): time to finish one task.
+\textbf{Throughput} (bandwidth): tasks completed per unit time. They often
+conflict (Concorde has lower latency, the 747 higher throughput).
+\end{definition}
+\begin{itemize}[leftmargin=*]
+  \item \textbf{CPU time} excludes I/O wait and other programs; it is user
+  CPU time $+$ system CPU time.
+  \item $\text{Performance} = 1/\text{ExTime}$; Speedup $=
+  \text{ExTime}_{old}/\text{ExTime}_{new}$; ``X is $n\%$ faster than Y'':
+  $\text{ExTime}_Y/\text{ExTime}_X = 1+n/100$.
+  \item \textbf{CPU equation}: $T = I\times\CPI\times C$. Program, compiler
+  and ISA affect $I$ and CPI; organization affects CPI and $C$; technology
+  affects $C$.
+  \item \textbf{Execution time of real programs is the only reliable
+  measure}. MIPS, MFLOPS, clock rate, cache size alone are not.
+\end{itemize}
+
+\begin{theorem}[Amdahl's Law]
+Speedup $=1/\big((1-F)+F/S\big)$: the improvement is limited by the fraction
+of time $F$ the enhancement can be used; even with $S\to\infty$, speedup
+$\le 1/(1-F)$.
+\end{theorem}
+\begin{note}
+\textbf{Make the common case fast.} Every instruction is fetched but only
+some access data $\Rightarrow$ optimize instruction fetch. Programs show
+\textbf{locality} (90\% of time in 10\% of code; \emph{temporal}: reuse
+soon, \emph{spatial}: neighbours soon) $\Rightarrow$ a memory
+\textbf{hierarchy} (registers, cache, memory, disk) keeps frequent accesses
+in small fast memories.
+\end{note}
+
+\subsection{MIPS and MFLOPS -- why they mislead}
+\begin{itemize}[leftmargin=*]
+  \item MIPS $=I/(T\cdot10^6)=f/(\CPI\cdot10^6)$ ignores instruction count:
+  (1) depends on the ISA, (2) varies between programs on one machine, (3) can
+  vary \emph{inversely} with performance. Valid only for the same program,
+  ISA and compiler. \emph{Peak} MIPS uses only the lowest-CPI instructions.
+  \item MFLOPS: better across different ISAs, but program-dependent (a
+  compiler has $\approx0$ FP ops) and dependent on the FP operation mix;
+  \emph{peak} MFLOPS is unrepresentative.
+\end{itemize}
+
+\subsection{Benchmarks and summarizing}
+\begin{itemize}[leftmargin=*]
+  \item Benchmark program levels, most to least accurate: \textbf{real
+  applications, modified applications, kernels, toy benchmarks, synthetic
+  benchmarks}.
+  \item \textbf{SPEC} (System Performance Evaluation Cooperative): SPEC89
+  (single SPECmark), SPEC92 (int/fp split), SPEC95, SPEC2000, SPEC CPU2006;
+  SPECSFS and SPECWeb for servers.
+  \item Arithmetic mean tracks total time but favours long programs; weighted
+  mean depends on the chosen weights; \textbf{geometric mean} of normalized
+  times is consistent whatever the reference machine, but does not track
+  total time; harmonic mean averages rates.
+  \item ``Benchmarks shape a field'': vendors may tune for benchmarks rather
+  than real programs (``sales almost always wins'').
+\end{itemize}
+
+\subsection{Cost}
+\begin{itemize}[leftmargin=*]
+  \item \textbf{Cost} = what it takes to build; \textbf{price} = what it
+  sells for. List price $=$ component cost $+$ direct cost (labour, scrap,
+  warranty) $+$ gross margin (R\&D, marketing, profit) $+$ average discount.
+  \item IC cost is driven by \textbf{yield}, \textbf{volume} and
+  \textbf{feature size}. Larger dies: fewer dies per wafer \emph{and} lower
+  yield, so die cost grows faster than die area.
+  \item Learning curve: cost drops $\approx10\%$ each time volume doubles.
+  High-end machines sell in low volume, so they need high margins to recoup
+  R\&D.
+\end{itemize}
+
+% ============================================================================
+\section{Lecture 2: Instruction Set Architecture}
+
+\subsection{Basics}
+\begin{itemize}[leftmargin=*]
+  \item \textbf{Instruction set}: all instructions a processor can execute;
+  the interface between software and hardware.
+  \item \textbf{Execution cycle}: instruction fetch $\to$ decode $\to$
+  operand fetch $\to$ execute $\to$ write back (store result).
+  \item Instruction fields: \textbf{opcode}, \textbf{source operand
+  reference(s)}, \textbf{result operand reference}.
+  \item Design aspects: operation repertoire, addressing modes, data types,
+  instruction format, registers.
+  \item Instruction types: \textbf{data processing} (arithmetic, logic),
+  \textbf{data storage} (load/store memory), \textbf{data movement}
+  (register/I/O), \textbf{control} (test, branch).
+\end{itemize}
+
+\subsection{ISA styles (where the operands are)}
+\begin{center}
+\small
+\begin{tabular}{@{}lp{10cm}@{}}
+\toprule
+Stack & operands on top of stack; dense code, simple HW; stack bottleneck, little parallelism \\
+Accumulator & one implicit register; few instructions; heavy memory traffic, variable CPI \\
+Memory-memory & all operands in memory; simple but memory-bound \\
+Register-memory & one operand may be in memory (x86, 68000) \\
+Load-store & ALU ops on registers only; \texttt{load}/\texttt{store} access memory (MIPS, PowerPC, Alpha) -- the modern choice \\
+\bottomrule
+\end{tabular}
+\end{center}
+Other styles: high-level-language architectures (Burroughs B5000) failed for
+lack of compilers able to exploit them; RISC simplifies hardware and lets the
+compiler build complex operations.
+
+\subsection{Addressing modes}
+\begin{definition}[Addressing mode]
+How the processor refers to an operand (or a jump target). Classified by the
+source of data (immediate, register, memory) and the address calculation
+(direct, indirect, indexed).
+\end{definition}
+Immediate, register, direct, register indirect, displacement
+(base+offset), indexed (base+index), memory indirect, PC-relative, scaled.
+Measurements: \textbf{immediate and displacement are by far the most used};
+most displacements fit in about 12--16 bits, so 16-bit fields suffice.
+
+\subsection{Operands, encoding, registers}
+\begin{itemize}[leftmargin=*]
+  \item Operand types: characters (ASCII 8-bit, Unicode 16-bit), integers
+  (2's complement, 16/32-bit), floating point (single 32-bit, double
+  64-bit), BCD (business), fixed point (DSP), RGBA (graphics).
+  \item Encoding: \textbf{variable length} (VAX, x86: dense code, hard
+  decode), \textbf{fixed length} (MIPS, ARM, PowerPC: easy decode, bigger
+  code), \textbf{hybrid} (MIPS16, Thumb: two fixed lengths).
+  \item Registers are the fastest storage and flexible for compilers, but
+  more registers need more encoding bits and a bigger register file can be
+  slower.
+\end{itemize}
+
+\subsection{CISC vs.\ RISC}
+\begin{center}
+\small
+\begin{tabular}{@{}p{6.9cm}p{6.9cm}@{}}
+\toprule
+CISC & RISC \\
+\midrule
+More work per instruction, compact code & Fewer, simpler instructions; more instructions executed \\
+Born when memory was very expensive & Designed for pipelining, CPI $\le1$ \\
+Many addressing modes (68000: 14; 68020: 25; 680x0 listing: 18; IA-32: 12) & Few modes (Alpha: 4; HP PA-RISC: 7) \\
+Variable-length instructions (x86: 1--12 bytes) & Fixed 32-bit instructions \\
+Memory operands in ALU instructions; backward compatibility & Load-store; delayed loads/branches; prefetch and speculation \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\subsection{MIPS}
+\begin{itemize}[leftmargin=*]
+  \item 32 general registers, plus PC, Hi, Lo; three 32-bit formats:
+  \textbf{R} (op rs rt rd shamt funct), \textbf{I} (op rs rt imm16),
+  \textbf{J} (op addr26); opcode always in the first 6 bits.
+  \item \textbf{Design principles}: simplicity favours regularity; smaller
+  is faster; make the common case fast; good design demands good compromises
+  (three formats, all the same length).
+  \item SPEC2006 mix: integer code is dominated by data transfer (35\%) and
+  conditional branches (34\%); FP code by arithmetic (48\%) and data
+  transfer (36\%).
+  \item \textbf{Big-endian} (most significant byte at the lowest address).
+  \item MIPS addressing: register, immediate, base+displacement
+  (\texttt{lw}/\texttt{sw}), PC-relative (\texttt{beq}/\texttt{bne}, offset in
+  words from PC$+4$), pseudo-direct (\texttt{j}/\texttt{jal}), register
+  indirect (\texttt{jr}).
+  \item No \texttt{MOV}, \texttt{NOT}, \texttt{SUBI}, \texttt{SLA}: use
+  \texttt{add \dots,\$zero}, \texttt{nor \dots,\$zero}, \texttt{addi} with a
+  negative constant, \texttt{sll}. 32-bit constants: \texttt{lui} $+$
+  \texttt{ori}.
+  \item \textbf{Atomic read-modify-write}: \texttt{ll}/\texttt{sc};
+  \texttt{sc} fails (returns 0) if the word changed since the \texttt{ll}.
+  \item \textbf{Procedure call}: save return address, save needed registers,
+  execute, restore registers, restore return address, return.
+  \texttt{jal} sets \texttt{\$ra}; \texttt{jr \$ra} returns. \texttt{\$s0--\$s7,
+  \$sp, \$fp, \$gp, \$ra} are preserved across calls (callee saves);
+  \texttt{\$t}, \texttt{\$a}, \texttt{\$v} are not (caller saves if needed). A
+  leaf procedure need not save \texttt{\$ra}.
+\end{itemize}
+
+% ============================================================================
+\section{Lecture 3: Pipelining}
+
+\subsection{Concepts}
+\begin{definition}[Pipelining]
+Overlapping the execution of multiple instructions. Each step is a
+\textbf{pipeline stage}; stages are connected linearly; the \textbf{machine
+cycle} is set by the slowest stage.
+\end{definition}
+\begin{itemize}[leftmargin=*]
+  \item Increases \textbf{throughput}; does \textbf{not} reduce (may slightly
+  increase) the \textbf{latency} of one instruction ($k$ cycles).
+  \item Ideal CPI $=1$: one instruction completes per cycle once the pipeline
+  is full ($\CPI = (k+n-1)/n\to1$).
+  \item Ideal speedup $=$ number of stages. Reduced by unbalanced stages,
+  fill/drain time, latch/control overhead, and hazards.
+  \item \textbf{Laundry lessons}: rate limited by the slowest stage; tasks
+  overlap using different resources; dependencies force waiting.
+\end{itemize}
+
+\subsection{The 5-stage MIPS pipeline}
+\begin{itemize}[leftmargin=*]
+  \item IF (instruction memory) -- ID (decode, read registers) -- EX (ALU,
+  address) -- MEM (data memory) -- WB (write register). Pipeline registers
+  IF/ID, ID/EX, EX/MEM, MEM/WB carry values and control between stages.
+  \item Register file: \textbf{write in the first half, read in the second
+  half} of the cycle.
+  \item \textbf{Why MIPS is easy to pipeline}: (1) all instructions the same
+  length, (2) few formats with register fields in fixed positions (read
+  registers while decoding), (3) memory operands only in \texttt{lw}/\texttt{sw}
+  (EX computes the address, MEM accesses), (4) aligned operands (one access
+  per transfer).
+\end{itemize}
+
+\subsection{Hazards}
+\begin{definition}[Hazard]
+A situation that prevents the next instruction from executing in its
+designated cycle, forcing stalls and raising CPI above 1:
+\textbf{structural} (resource conflict), \textbf{data} (dependence on a
+previous result), \textbf{control} (branches and other PC changes).
+\end{definition}
+\begin{itemize}[leftmargin=*]
+  \item $\CPI_{pipe} = 1 + $ stall cycles per instruction; speedup $=$
+  depth$/(1+$stall CPI$)$ for balanced stages.
+  \item \textbf{Structural}: e.g.\ one memory port for instructions and
+  data. Fix by duplicating resources (separate I/D memories) or stalling;
+  sometimes accepted when rare and costly to remove.
+  \item \textbf{Data hazard classes} ($I$ before $J$): \textbf{RAW} (true
+  dependence; $J$ reads too early), \textbf{WAW} and \textbf{WAR} (name
+  dependences; writes in the wrong order / $J$ writes before $I$ reads);
+  RAR is not a hazard. Only RAW occurs in the simple in-order 5-stage
+  pipeline.
+  \item \textbf{Forwarding (bypassing)}: send a result from the EX/MEM or
+  MEM/WB pipeline register straight to the ALU input, instead of waiting for
+  write-back.
+  \item \textbf{Load-use hazard}: a load's data is ready only after MEM, so
+  the next instruction still stalls one cycle even with forwarding.
+  \item \textbf{Hardware interlock}: detects the hazard and stalls.
+  \textbf{Compiler (static) scheduling}: reorders code so a load is not
+  immediately followed by its use. Static $=$ compile time, dynamic $=$ run
+  time in hardware.
+\end{itemize}
+
+\subsection{Control hazards and branches}
+\begin{itemize}[leftmargin=*]
+  \item Branch penalty $=$ (stage where the branch is resolved) $-1$: 3 cycles
+  if resolved in MEM. MIPS moves the zero test and target adder into ID
+  $\Rightarrow$ 1 cycle.
+  \item \textbf{Four alternatives}: (1) stall until resolved; (2)
+  \textbf{predict not taken} -- keep fetching, squash if taken (late state
+  update makes this safe; $\approx47\%$ of MIPS branches not taken); (3)
+  \textbf{predict taken} ($\approx53\%$ taken) -- no gain in MIPS because the
+  target is not known earlier; (4) \textbf{delayed branch} -- the
+  instruction in the delay slot always executes (MIPS uses one slot).
+  \item Delay-slot filling: from \textbf{before} the branch (best, always
+  useful, branch must not depend on it); from the \textbf{target} (useful if
+  taken, may need copying, must be safe if not taken); from the
+  \textbf{fall-through} (useful if not taken, must be safe if taken).
+  \textbf{Cancelling (nullifying) branches} make the last two easier.
+  \item Compilers fill $\approx60\%$ of slots, $\approx80\%$ of them usefully
+  ($\approx50\%$ overall). Delayed branches lost popularity: deeper and
+  multiple-issue pipelines need more slots, and dynamic prediction became
+  cheap.
+\end{itemize}
+
+% ============================================================================
+\section{Self-Check Question Bank}
+
+Answers are in the next section.
+
+\begin{enumerate}[label=\textbf{Q\arabic*.},leftmargin=*]
+  \item What is the role of a computer architect?
+  \item Why is the ISA called the hardware/software interface?
+  \item Name the three ``walls'' and the conclusion drawn from them.
+  \item Latency vs.\ throughput: which one does pipelining improve?
+  \item Which of $I$, CPI, $C$ does (a) the compiler, (b) the organization,
+  (c) the technology affect?
+  \item State Amdahl's Law and its main consequence.
+  \item Give three reasons why MIPS is a poor performance metric. When is it
+  valid?
+  \item Order the five kinds of benchmark programs from most to least
+  accurate.
+  \item Why use the geometric mean of normalized times? What is its weakness?
+  \item Why does die cost grow faster than die area?
+  \item Cost vs.\ price: what is between them?
+  \item List the five steps of the instruction execution cycle.
+  \item Compare stack and accumulator ISAs (one advantage and one drawback
+  each).
+  \item Which addressing modes are used most, and what does that imply for
+  instruction design?
+  \item Fixed vs.\ variable-length encoding: trade-off?
+  \item Give four characteristics of RISC.
+  \item State the four MIPS design principles.
+  \item How do you perform \texttt{NOT}, \texttt{MOV}, and load a 32-bit
+  constant in MIPS?
+  \item What do \texttt{ll}/\texttt{sc} provide?
+  \item Which registers must a callee preserve? Must a leaf procedure save
+  \texttt{\$ra}?
+  \item Why is the ideal CPI of a pipeline 1 even though each instruction
+  takes 5 cycles?
+  \item What limits pipeline speedup in practice?
+  \item Give four reasons why MIPS is easy to pipeline.
+  \item Define the three kinds of hazard with an example of each.
+  \item Why can't WAR and WAW hazards occur in the 5-stage MIPS pipeline?
+  \item What is forwarding, and which hazard can it not remove?
+  \item How does MIPS reduce the branch penalty from 3 to 1 cycle?
+  \item Compare predict-not-taken and delayed branch.
+  \item What are the three ways to fill a delay slot and their conditions?
+  \item Why have delayed branches fallen out of favour?
+\end{enumerate}
+
+% ============================================================================
+\section{Answers}
+
+\begin{enumerate}[label=\textbf{A\arabic*.},leftmargin=*]
+  \item Design the levels of a computer system to maximize performance and
+  programmability within technology and cost limits.
+  \item It is the only layer both sides agree on: software is written to it
+  and every hardware implementation must execute it, so one ISA supports
+  many implementations.
+  \item Power wall, ILP wall, memory wall (together the brick wall)
+  $\Rightarrow$ single-core performance growth slowed, so chips went
+  multicore.
+  \item Pipelining improves throughput, not latency.
+  \item (a) $I$ and CPI; (b) CPI and $C$; (c) $C$.
+  \item Speedup $=1/((1-F)+F/S)$; the part not improved limits the overall
+  gain (at most $1/(1-F)$) $\Rightarrow$ make the common case fast.
+  \item ISA-dependent; varies between programs; can vary inversely with
+  performance (ignores instruction count). Valid only with the same program,
+  ISA and compiler.
+  \item Real applications, modified applications, kernels, toy benchmarks,
+  synthetic benchmarks.
+  \item Its ranking does not depend on the reference machine. It does not
+  reflect total execution time.
+  \item A larger die means fewer dies per wafer and a lower yield (more
+  likely to contain a defect), so cost rises faster than area.
+  \item Direct costs, gross margin and the average discount are added to the
+  component cost to give the list price.
+  \item Fetch, decode, operand fetch, execute, write back.
+  \item Stack: dense code / stack bottleneck. Accumulator: few instructions,
+  easy compiler / heavy memory traffic, variable CPI.
+  \item Immediate and displacement; so a good ISA supports them efficiently
+  with $\approx16$-bit fields.
+  \item Fixed: simple, fast decode (good for pipelining) but larger code;
+  variable: compact code but complex decode.
+  \item Simple instructions, fixed-length encoding, load-store, few
+  addressing modes, designed for pipelining with CPI $\approx1$ (also
+  delayed branches/loads).
+  \item Simplicity favours regularity; smaller is faster; make the common
+  case fast; good design demands good compromises.
+  \item \texttt{nor \$d,\$s,\$zero}; \texttt{add \$d,\$s,\$zero};
+  \texttt{lui} upper half then \texttt{ori} lower half.
+  \item An atomic read-modify-write: \texttt{sc} succeeds only if the word was
+  not modified since the \texttt{ll}.
+  \item \texttt{\$s0--\$s7}, \texttt{\$sp}, \texttt{\$fp}, \texttt{\$gp},
+  \texttt{\$ra}. No -- a leaf never executes \texttt{jal}, so \texttt{\$ra} is
+  untouched.
+  \item Once full, one instruction finishes every cycle; the $k-1$ fill cycles
+  are paid once, so $\CPI=(k+n-1)/n\to1$.
+  \item Unbalanced stages, pipeline-register overhead, fill/drain time, and
+  hazards (stalls).
+  \item Same instruction length; few formats with fixed register fields;
+  memory operands only in loads/stores; aligned operands.
+  \item Structural (one memory port for instruction and data accesses), data
+  (\texttt{add r1}; \texttt{sub} using \texttt{r1}), control (a taken
+  \texttt{beq}).
+  \item Reads happen early (ID) and writes late (WB), and instructions stay in
+  order, so a later instruction can neither write before an earlier one reads
+  nor before an earlier one writes.
+  \item Routing a result from a pipeline register directly to the ALU input
+  of a later instruction. It cannot remove the load-use stall.
+  \item It tests the register in ID and computes the target with an extra
+  adder in ID, so the branch is resolved in stage 2.
+  \item Predict-not-taken fetches sequentially and squashes on a taken branch
+  (penalty only when taken); delayed branch always executes the slot
+  instruction (cost only when the slot holds no useful work).
+  \item From before the branch (independent of the branch); from the target
+  (safe if not taken, may duplicate code); from the fall-through (safe if
+  taken).
+  \item Deeper and multiple-issue pipelines need more than one slot, and
+  dynamic branch prediction became cheap.
+\end{enumerate}
+
+\end{document}

@@ -1,0 +1,148 @@
+% Reusable colored theorem and note environments.
+% Load in the preamble with: \input{colored-boxes}
+
+\RequirePackage[dvipsnames]{xcolor}
+\RequirePackage{amsthm}
+\RequirePackage{thmtools}
+\RequirePackage[framemethod=TikZ]{mdframed}
+\RequirePackage{tcolorbox}
+\tcbuselibrary{breakable}
+
+\mdfsetup{skipabove=1em,skipbelow=0.5em}
+\theoremstyle{definition}
+
+% Green box: definitions.
+\declaretheoremstyle[
+  headfont=\bfseries\sffamily\color{ForestGreen!70!black},
+  bodyfont=\normalfont,
+  mdframed={
+    linewidth=2pt,
+    rightline=false,
+    topline=false,
+    bottomline=false,
+    linecolor=ForestGreen,
+    backgroundcolor=ForestGreen!5,
+  }
+]{thmgreenbox}
+
+% Blue box: examples and exercises.
+\declaretheoremstyle[
+  headfont=\bfseries\sffamily\color{NavyBlue!70!black},
+  bodyfont=\normalfont,
+  mdframed={
+    linewidth=2pt,
+    rightline=false,
+    topline=false,
+    bottomline=false,
+    linecolor=NavyBlue,
+    backgroundcolor=NavyBlue!5,
+  }
+]{thmbluebox}
+
+% Blue line: remarks and notes.
+\declaretheoremstyle[
+  headfont=\bfseries\sffamily\color{NavyBlue!70!black},
+  bodyfont=\normalfont,
+  mdframed={
+    linewidth=2pt,
+    rightline=false,
+    topline=false,
+    bottomline=false,
+    linecolor=NavyBlue,
+  }
+]{thmblueline}
+
+% Sienna box: mathematical results.
+\declaretheoremstyle[
+  headfont=\bfseries\sffamily\color{RawSienna!70!black},
+  bodyfont=\normalfont,
+  mdframed={
+    linewidth=2pt,
+    rightline=false,
+    topline=false,
+    bottomline=false,
+    linecolor=RawSienna,
+    backgroundcolor=RawSienna!5,
+  }
+]{thmredbox}
+
+% Pale sienna box: proofs and solutions.
+\declaretheoremstyle[
+  headfont=\bfseries\sffamily\color{RawSienna!70!black},
+  bodyfont=\normalfont,
+  numbered=no,
+  mdframed={
+    linewidth=2pt,
+    rightline=false,
+    topline=false,
+    bottomline=false,
+    linecolor=RawSienna,
+    backgroundcolor=RawSienna!1,
+  },
+  qed=\qedsymbol,
+]{thmproofbox}
+
+% Pale blue box: intuition and explanatory arguments.
+\declaretheoremstyle[
+  headfont=\bfseries\sffamily\color{NavyBlue!70!black},
+  bodyfont=\normalfont,
+  numbered=no,
+  mdframed={
+    linewidth=2pt,
+    rightline=false,
+    topline=false,
+    bottomline=false,
+    linecolor=NavyBlue,
+    backgroundcolor=NavyBlue!1,
+  }
+]{thmexplanationbox}
+
+% All numbered environments share a counter that resets each lecture section.
+\declaretheorem[style=thmredbox,name=Theorem,numberwithin=section]{theorem}
+\declaretheorem[style=thmgreenbox,name=Definition,sibling=theorem]{definition}
+\declaretheorem[style=thmredbox,name=Proposition,sibling=theorem]{proposition}
+\declaretheorem[style=thmredbox,name=Proposition,sibling=theorem]{prop}
+\declaretheorem[style=thmredbox,name=Lemma,sibling=theorem]{lemma}
+\declaretheorem[style=thmredbox,name=Corollary,sibling=theorem]{corollary}
+\declaretheorem[style=thmbluebox,name=Exercise,sibling=theorem]{exercise}
+
+% Unnumbered supporting environments.
+\declaretheorem[style=thmbluebox,numbered=no,name=Example]{example}
+\declaretheorem[style=thmbluebox,numbered=no,name=Example]{eg}
+\declaretheorem[style=thmblueline,numbered=no,name=Remark]{remark}
+\declaretheorem[style=thmblueline,numbered=no,name=Note]{note}
+
+% Replace the standard proof with a colored proof box.
+\declaretheorem[style=thmproofbox,name=Proof]{replacementproof}
+\renewenvironment{proof}[1][\proofname]
+  {\vspace{-10pt}\begin{replacementproof}}
+  {\end{replacementproof}}
+
+\declaretheorem[style=thmproofbox,name=Solution]{solution}
+\declaretheorem[style=thmexplanationbox,name=Explanation]{tmpexplanation}
+\newenvironment{explanation}[1][]
+  {\vspace{-10pt}\begin{tmpexplanation}}
+  {\end{tmpexplanation}}
+
+% General-purpose tcolorbox notes.
+\newenvironment{verbetering}{%
+  \begin{tcolorbox}[
+    arc=0mm,
+    colback=white,
+    colframe=green!60!black,
+    title=Opmerking,
+    fonttitle=\sffamily,
+    breakable,
+  ]
+}{\end{tcolorbox}}
+
+\newenvironment{noot}[1]{%
+  \begin{tcolorbox}[
+    arc=0mm,
+    colback=white,
+    colframe=black!40,
+    title=#1,
+    fonttitle=\sffamily,
+    breakable,
+  ]
+}{\end{tcolorbox}}

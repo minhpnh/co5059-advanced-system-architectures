@@ -1,0 +1,651 @@
+% !TeX program = xelatex
+\documentclass[11pt]{article}
+\newcommand{\notesdir}{../../lecture-notes}
+\input{../../lecture-notes/preamble}
+
+\begin{document}
+\sloppy
+\makecover{Quiz Review: Performance}{Lecture 1 -- CPU time, CPI, speedup,
+Amdahl's Law, MIPS/MFLOPS, chip cost and summarizing performance. A cheat
+sheet, every calculation exercise from the slides with full solutions, the
+in-class exam question solved, new exam-style questions, and extra practice
+problems -- with solutions at the end.}
+
+% ============================================================================
+\section{Cheat Sheet}
+
+\subsection{Performance and speedup}
+\begin{center}
+\renewcommand{\arraystretch}{2.3}
+\begin{tabular}{@{}p{4.2cm}p{10.3cm}@{}}
+\toprule
+Quantity & Formula \\
+\midrule
+Performance & $\text{Perf} = \dfrac{1}{\text{ExTime}}$ \\
+Speedup (A over B) & $\dfrac{\text{Perf}_A}{\text{Perf}_B} = \dfrac{\text{ExTime}_B}{\text{ExTime}_A}$ \quad (old / new) \\
+``X is $n\%$ faster than Y'' & $n = 100\cdot\dfrac{\text{ExTime}_Y-\text{ExTime}_X}{\text{ExTime}_X}$ \quad (divide by the \emph{faster} time) \\
+CPU time & $\text{User CPU} + \text{System CPU}$; \quad \%CPU $= \dfrac{u+s}{\text{elapsed}}$ \\
+Throughput & tasks per unit time (e.g.\ passengers $\times$ mph) \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\subsection{The CPU equation}
+\begin{theorem}[CPU time]
+\[
+  T = I \times \CPI \times C = \frac{I \times \CPI}{f},
+  \qquad C = \frac{1}{f}
+\]
+\[
+  \text{CPU cycles} = \sum_i \CPI_i \, C_i, \qquad
+  \CPI = \frac{\text{CPU cycles}}{I} = \sum_i \CPI_i \, F_i, \qquad
+  F_i = \frac{C_i}{I}
+\]
+\[
+  \text{Fraction of time in class } i = \frac{\CPI_i\,F_i}{\CPI}
+\]
+\end{theorem}
+
+\begin{center}
+\begin{tabular}{@{}lccc@{}}
+\toprule
+Changes \dots & $I$ & $\CPI$ & $C$ \\
+\midrule
+Program / algorithm & X & X & \\
+Compiler            & X & X & \\
+ISA                 & X & X & \\
+Organization        &   & X & X \\
+Technology          &   &   & X \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\begin{note}
+Unit conversions: $200\text{ MHz} \Rightarrow C = 5\text{ ns}$;
+$1\text{ GHz} \Rightarrow 1\text{ ns}$; $2.5\text{ GHz} \Rightarrow
+0.4\text{ ns}$. Always write $T = I\cdot\CPI / f$ with $f$ in Hz to avoid
+mistakes.
+\end{note}
+
+\subsection{Amdahl's Law}
+\begin{theorem}[Amdahl's Law]
+If a fraction $F$ of the \emph{execution time} is sped up by $S$:
+\[
+  \text{ExTime}_{new} = \text{ExTime}_{old}\left[(1-F)+\frac{F}{S}\right],
+  \qquad
+  \text{Speedup} = \frac{1}{(1-F)+F/S} \;\le\; \frac{1}{1-F}.
+\]
+Several disjoint enhancements:
+$\displaystyle \text{Speedup} = \frac{1}{(1-\sum F_i)+\sum F_i/S_i}$.
+\end{theorem}
+
+\begin{prop}[Required enhancement for a target speedup $T$]
+\[
+  \frac{1}{T} = (1-F) + \frac{F}{S}
+  \quad\Longrightarrow\quad
+  S = \frac{F}{\frac{1}{T}-(1-F)} .
+\]
+If $\frac{1}{T} \le 1-F$ (i.e.\ $T \ge \frac{1}{1-F}$), the target is
+\textbf{impossible}.
+\end{prop}
+
+\begin{remark}
+\textbf{Classic trap:} $F$ is a fraction of \emph{time}, not of instruction
+count. If you are given an instruction mix, convert first:
+$F = \CPI_i F_i / \CPI$. Alternatively, skip Amdahl and compare old vs.\ new
+CPI directly with the CPU equation -- both give the same answer.
+\end{remark}
+
+\subsection{MIPS and MFLOPS}
+\[
+  \text{MIPS} = \frac{I}{T\times 10^6} = \frac{f}{\CPI\times10^6}
+  \qquad
+  \text{MFLOPS} = \frac{\#\text{FP ops}}{T\times10^6}
+\]
+MIPS only compares fairly with the \textbf{same program, same ISA, same
+compiler}. It can rank machines \emph{opposite} to execution time.
+
+\subsection{Cost of an integrated circuit}
+\begin{align*}
+  \text{Dies per wafer} &= \frac{\pi (d/2)^2}{A} - \frac{\pi d}{\sqrt{2A}}
+  \qquad (d=\text{wafer diameter},\ A=\text{die area})\\
+  \text{Die yield} &= \text{Wafer yield}\times\left(1+\frac{D\cdot A}{\alpha}\right)^{-\alpha},
+  \qquad \alpha \approx 4\\
+  \text{Die cost} &= \frac{\text{Wafer cost}}{\text{Dies per wafer}\times\text{Die yield}}\\
+  \text{IC cost} &= \frac{\text{Die} + \text{Die test} + \text{Packaging} + \text{Final test}}{\text{Final test yield}}
+\end{align*}
+Learning curve: every doubling of volume cuts cost by $\approx10\%$.
+
+\subsection{Summarizing several programs}
+\begin{center}
+\begin{tabular}{@{}lll@{}}
+\toprule
+Arithmetic mean & $\frac1n\sum T_i$ & tracks total time \\
+Weighted mean & $\sum W_i T_i$ & result depends on the weights chosen \\
+Geometric mean & $\left(\prod \frac{T_i}{T_{ref,i}}\right)^{1/n}$ & same ranking for any reference machine \\
+Harmonic mean & $\frac{n}{\sum 1/R_i}$ & for averaging \emph{rates} \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+% ============================================================================
+\section{Exercises from the Slides (with Solutions)}
+
+\begin{exercise}[Unix \texttt{time}]
+The command prints \texttt{90.7u 12.9s 2:39 65\%}. Interpret it.
+\end{exercise}
+\begin{solution}
+User CPU $=90.7$~s, system CPU $=12.9$~s, elapsed $=2{:}39=159$~s. CPU
+time $=103.6$~s, and $103.6/159 = 65\%$ of the elapsed time. The other
+35\% is I/O or time spent running other programs.
+\end{solution}
+
+\begin{exercise}[Two notions of performance]
+Boeing 747: 6.5~h DC--Paris, 610~mph, 470 passengers. Concorde: 3~h,
+1350~mph, 132 passengers. Compare latency and throughput.
+\end{exercise}
+\begin{solution}
+Latency: Concorde is $6.5/3 = 1350/610 = 2.2\times$ faster.
+Throughput (passenger-miles per hour): Boeing $470\times610=286{,}700$,
+Concorde $132\times1350=178{,}200$. Boeing is $286{,}700/178{,}200 =
+1.6\times$ higher throughput. Which is ``faster'' depends on the metric.
+\end{solution}
+
+\begin{exercise}[Price-performance: train vs.\ plane]
+Move 2400 people. Train: 4~h trip, 2400 seats, 300~Rs/person. Plane: 45~min
+trip, 300 seats, 3000~Rs/person. Compare time per person and cost-performance.
+\end{exercise}
+\begin{solution}
+Plane needs $2400/300=8$ trips $=6$~h; train needs 4~h. Time per person:
+train $4\text{ h}/2400 = 6$~s, plane $6\text{ h}/2400=9$~s, so the train
+has 50\% better throughput even though each plane trip is $5\times$
+faster. Cost $\times$ time: train $300\times6=1800$, plane
+$3000\times9=27{,}000$ Rs$\cdot$s/person: the train is $15\times$ better.
+\end{solution}
+
+\begin{exercise}[Speedup]
+A program takes 1~s on machine A and 10~s on machine B. Speedup of A over B?
+\end{exercise}
+\begin{solution}
+$\text{Speedup} = \text{ExTime}_B/\text{ExTime}_A = 10/1 = 10$: A is
+10 times faster.
+\end{solution}
+
+\begin{exercise}[CPU time]
+$I = 10{,}000{,}000$ instructions, $\CPI=2.5$, clock 200~MHz. CPU time?
+\end{exercise}
+\begin{solution}
+$C = 1/200\text{ MHz} = 5\times10^{-9}$~s, so
+$T = 10^7\times2.5\times5\times10^{-9} = 0.125$~s.
+\end{solution}
+
+\begin{exercise}[New compiler and faster CPU]
+Same program. A new compiler gives $I'=9{,}500{,}000$ and $\CPI'=3.0$; the
+new CPU runs at 300~MHz. Speedup?
+\end{exercise}
+\begin{solution}
+$T' = 9.5\times10^6\times3.0/(300\times10^6) = 0.095$~s.
+Speedup $=0.125/0.095 = 1.32$, i.e.\ 32\% faster.
+\end{solution}
+
+\begin{exercise}[Instruction classes]
+$\CPI_A=1$, $\CPI_B=2$, $\CPI_C=3$. Sequence 1 has counts $(2,1,2)$,
+sequence 2 has $(4,1,1)$. Find each CPI. Which is faster?
+\end{exercise}
+\begin{solution}
+Seq.~1: cycles $=2+2+6=10$, $I=5$, $\CPI=2.0$.
+Seq.~2: cycles $=4+2+3=9$, $I=6$, $\CPI=1.5$.
+Sequence 2 is faster (9 vs.\ 10 cycles) even though it executes \emph{more}
+instructions.
+\end{solution}
+
+\begin{exercise}[RISC instruction mix]
+ALU 50\% (CPI 1), Load 20\% (CPI 5), Store 10\% (CPI 3), Branch 20\% (CPI 2).
+Find the CPI and the fraction of time spent in each class.
+\end{exercise}
+\begin{solution}
+$\CPI = 0.5+1.0+0.3+0.4 = 2.2$. Time fractions: ALU $0.5/2.2=23\%$, Load
+$1.0/2.2=45\%$, Store $0.3/2.2=14\%$, Branch $0.4/2.2=18\%$.
+\end{solution}
+
+\begin{exercise}[$n\%$ faster]
+Y takes 15~s, X takes 10~s. How much faster is X?
+\end{exercise}
+\begin{solution}
+$n = 100\,(15-10)/10 = 50\%$.
+\end{solution}
+
+\begin{exercise}[Amdahl: floating point]
+FP instructions become $2\times$ faster, but only 10\% of the time is FP.
+Overall speedup?
+\end{exercise}
+\begin{solution}
+$\text{ExTime}_{new} = (0.9 + 0.1/2)\,\text{ExTime}_{old} =
+0.95\,\text{ExTime}_{old}$, so Speedup $=1/0.95 = 1.053$.
+\end{solution}
+
+\begin{exercise}[Amdahl: load CPI]
+In the RISC mix above, load CPI improves from 5 to 2. Speedup?
+\end{exercise}
+\begin{solution}
+Loads take $F=45\%$ of the time (not 20\%), $S=5/2=2.5$:
+$\text{Speedup}=1/(0.55+0.45/2.5) = 1/0.73 = 1.37$.
+Check with CPI: new $\CPI = 0.5+0.2\times2+0.3+0.4 = 1.6$, and
+$2.2/1.6 = 1.37$.
+\end{solution}
+
+\begin{exercise}[How fast must multiply be?]
+A program runs in 100~s, of which multiply takes 80~s. How much faster must
+multiply be to make the program (a) $4\times$ faster, (b) $5\times$ faster?
+\end{exercise}
+\begin{solution}
+(a) Target 25~s: $25 = 20 + 80/n \Rightarrow n = 16$.
+(b) Target 20~s: $20 = 20 + 80/n \Rightarrow 80/n = 0$: impossible. The
+unaffected 20~s already equals the target ($1/(1-F) = 1/0.2 = 5$ is the
+limit and cannot be reached).
+\end{solution}
+
+\begin{exercise}[Multiple enhancements]
+$S_1=10, F_1=20\%$; $S_2=15, F_2=15\%$; $S_3=30, F_3=10\%$ (disjoint
+parts). Overall speedup?
+\end{exercise}
+\begin{solution}
+$\text{Speedup} = 1/\big(0.55 + 0.02 + 0.01 + 0.0033\big) = 1/0.5833 =
+1.71$.
+\end{solution}
+
+\begin{exercise}[MIPS can mislead]
+Clock 100~MHz; CPI of classes A, B, C $=1,2,3$. Compiler 1 produces
+$(5,1,1)$ million instructions; compiler 2 produces $(10,1,1)$ million.
+Compare MIPS and CPU time.
+\end{exercise}
+\begin{solution}
+Compiler 1: $\CPI = 10/7 = 1.43$, MIPS $=100/1.43 = 70$, time
+$=7\times10^6\times1.43/10^8 = 0.10$~s.
+Compiler 2: $\CPI = 15/12 = 1.25$, MIPS $= 80$, time
+$=12\times10^6\times1.25/10^8 = 0.15$~s.
+Compiler 2 has the higher MIPS but is \emph{slower}.
+\end{solution}
+
+\begin{exercise}[Dies per wafer]
+Die $0.7$~cm on a side, wafer diameter 30~cm. How many dies?
+\end{exercise}
+\begin{solution}
+$A=0.49\text{ cm}^2$:
+$\pi(15)^2/0.49 - \pi\cdot30/\sqrt{0.98} = 1442.6 - 95.2 \approx 1347$ dies.
+\end{solution}
+
+\begin{exercise}[Die yield]
+Same die, defect density $0.6$/cm$^2$, $\alpha=4$, wafer yield 100\%.
+\end{exercise}
+\begin{solution}
+$(1 + 0.6\times0.49/4)^{-4} = 1.0735^{-4} = 0.75$.
+\end{solution}
+
+\begin{exercise}[Weighted means]
+P1/P2 take 1/1000~s on A, 10/100~s on B, 20/20~s on C. Rank the machines
+under weights $(0.5,0.5)$, $(0.909,0.091)$, $(0.999,0.001)$.
+\end{exercise}
+\begin{solution}
+\begin{tabular}[t]{@{}lccc@{}}
+Weights & A & B & C \\
+\hline
+$.5/.5$     & 500.5 & 55.0  & \textbf{20} \\
+$.909/.091$ & 91.91 & \textbf{18.19} & 20 \\
+$.999/.001$ & \textbf{2.0} & 10.09 & 20 \\
+\end{tabular}
+
+Each weighting picks a different winner (C, then B, then A). (The slide
+prints 91.82 and 18.8 for the middle row; the exact values are 91.91 and
+18.19 -- the ranking is the same.)
+\end{solution}
+
+% ============================================================================
+\section{Exam-Style Questions}
+
+The first question was done in class; its solution follows it directly. The
+others are new questions in the same style -- their solutions are in the last
+section.
+
+\begin{exercise}[In class -- two implementations of one ISA]\label{x:class}
+An instruction set has four classes A, B, C, D. Implementation M1 runs at
+2.4~GHz and M2 at 3.0~GHz. Cycles per instruction and class frequencies in a
+typical program:
+\begin{center}
+\begin{tabular}{@{}cccc@{}}
+\toprule
+Class & M1 cycles/instr. & M2 cycles/instr. & Frequency \\
+\midrule
+A & 2 & 3 & 20\% \\
+B & 8 & 4 & 50\% \\
+C & 1 & 10 & 10\% \\
+D & 4 & 2 & 20\% \\
+\bottomrule
+\end{tabular}
+\end{center}
+\begin{enumerate}[label=(\alph*),leftmargin=*]
+  \item Calculate the average CPI for M1.
+  \item Calculate the MIPS rating for M1.
+  \item Calculate the average CPI for M2.
+  \item Calculate the MIPS rating for M2.
+  \item A program executes $23.7\times10^9$ instructions (on either
+  implementation). How long does it take on M1, to the nearest millisecond?
+  \item Repeat (e) for M2.
+\end{enumerate}
+\end{exercise}
+\begin{solution}
+\leavevmode
+\begin{enumerate}[label=(\alph*),leftmargin=*]
+  \item $\CPI_{M1} = 0.2(2) + 0.5(8) + 0.1(1) + 0.2(4) = 0.4+4.0+0.1+0.8 =
+  5.3$.
+  \item $\text{MIPS}_{M1} = \dfrac{f}{\CPI\times10^6} =
+  \dfrac{2.4\times10^9}{5.3\times10^6} = 452.8$.
+  \item $\CPI_{M2} = 0.2(3) + 0.5(4) + 0.1(10) + 0.2(2) = 0.6+2.0+1.0+0.4 =
+  4.0$.
+  \item $\text{MIPS}_{M2} = \dfrac{3.0\times10^9}{4.0\times10^6} = 750$.
+  \item $T_{M1} = \dfrac{I\times\CPI}{f} = \dfrac{23.7\times10^9\times5.3}
+  {2.4\times10^9} = 52.3375\text{ s} \approx 52{,}338\text{ ms}$.
+  \item $T_{M2} = \dfrac{23.7\times10^9\times4.0}{3.0\times10^9} = 31.6\text{
+  s} = 31{,}600\text{ ms}$.
+\end{enumerate}
+M2 is $52.3375/31.6 = 1.66\times$ faster. Here the MIPS ratio
+($750/452.8 = 1.66$) agrees with the time ratio only because both machines
+run the \emph{same} instruction count (same ISA, same program).
+\end{solution}
+
+\begin{exercise}[Two processors, one program]\label{x:p1p2}
+An ISA has three classes. Processor P1 runs at 2.0~GHz and P2 at 2.5~GHz:
+\begin{center}
+\begin{tabular}{@{}cccc@{}}
+\toprule
+Class & P1 CPI & P2 CPI & Frequency \\
+\midrule
+A & 1 & 2 & 50\% \\
+B & 3 & 2 & 30\% \\
+C & 5 & 6 & 20\% \\
+\bottomrule
+\end{tabular}
+\end{center}
+\begin{enumerate}[label=(\alph*),leftmargin=*]
+  \item Average CPI of P1.
+  \item MIPS rating of P1.
+  \item Average CPI of P2.
+  \item MIPS rating of P2.
+  \item A program executes $15\times10^9$ instructions. Find its execution
+  time on each processor. Which is faster, and by what percentage?
+  \item P1's designers reduce the CPI of class C from 5 to 3. Find P1's new
+  execution time and check the speedup with Amdahl's Law. Which processor is
+  faster now?
+\end{enumerate}
+\end{exercise}
+
+\begin{exercise}[Two compilers]\label{x:compilers}
+A 3~GHz processor has classes A, B, C with CPI 1, 2 and 4. Two compilers
+produce these instruction counts (in billions) for the same program:
+\begin{center}
+\begin{tabular}{@{}lccc@{}}
+\toprule
+Compiler & A & B & C \\
+\midrule
+X & 6 & 2 & 2 \\
+Y & 12 & 2 & 1.5 \\
+\bottomrule
+\end{tabular}
+\end{center}
+\begin{enumerate}[label=(\alph*),leftmargin=*]
+  \item Total instruction count and average CPI for each compiler.
+  \item MIPS rating for each compiler.
+  \item CPU time for each compiler.
+  \item Which compiler would a buyer choose by MIPS, and which is really
+  faster? By what percentage?
+  \item A hardware change halves the CPI of class C (4 $\to$ 2). For
+  compiler X's code, find the new CPU time.
+  \item Verify (e) with Amdahl's Law.
+\end{enumerate}
+\end{exercise}
+
+\begin{exercise}[Cost of a die]\label{x:die}
+A 30~cm wafer costs \$6000. The die area is $1.2\text{ cm}^2$, the defect
+density $0.5/\text{cm}^2$, $\alpha = 4$, and the wafer yield is 100\%.
+\begin{enumerate}[label=(\alph*),leftmargin=*]
+  \item How many dies fit on the wafer?
+  \item What is the die yield?
+  \item How many good dies does a wafer produce?
+  \item What is the cost per good die?
+  \item A new process shrinks the die to $0.8\text{ cm}^2$ but the wafer costs
+  \$7000. Repeat (a)--(d).
+  \item Explain why the cost per die falls much more than the area.
+\end{enumerate}
+\end{exercise}
+
+% ============================================================================
+\section{Practice Problems}
+
+Try these before looking at the solutions in the next section.
+
+\begin{exercise}\label{p:time}
+A program executes $2\times10^9$ instructions with $\CPI=1.5$ on a
+2.5~GHz processor. What is its CPU time?
+\end{exercise}
+
+\begin{exercise}\label{p:compare}
+The same program runs on processor B with $\CPI = 1.2$ at 2.2~GHz. Which
+processor is faster, and by how much?
+\end{exercise}
+
+\begin{exercise}\label{p:clock}
+A program runs in 10~s on a 2~GHz computer A. You are designing computer B to
+run it in 6~s. The faster clock forces B to need $1.2\times$ as many clock
+cycles as A. What clock rate must B have?
+\end{exercise}
+
+\begin{exercise}\label{p:compilers}
+Classes A, B, C have CPI 1, 2, 3; clock 1~GHz. Compiler X emits (4, 2, 1)
+million instructions of each class; compiler Y emits (2, 2, 2) million. For
+each: instruction count, CPI, CPU time, MIPS. Which is faster?
+\end{exercise}
+
+\begin{exercise}\label{p:mix}
+ALU 45\% (CPI 1), Load 25\% (CPI 4), Store 10\% (CPI 3), Branch 20\% (CPI 2).
+Find the CPI and the fraction of time spent in each class.
+\end{exercise}
+
+\begin{exercise}\label{p:choose}
+For the mix in Problem~\ref{p:mix}, you can either (a) reduce load CPI from 4
+to 2, or (b) reduce branch CPI from 2 to 1. Which gives the larger speedup?
+\end{exercise}
+
+\begin{exercise}\label{p:vector}
+40\% of a program's time is vectorizable and a vector unit runs that part
+$10\times$ faster. What is the overall speedup? What is the best possible
+speedup from vectorization alone?
+\end{exercise}
+
+\begin{exercise}\label{p:target}
+FP code is 70\% of execution time. How much faster must the FP unit be for an
+overall speedup of 2? Of 3.5?
+\end{exercise}
+
+\begin{exercise}\label{p:twoenh}
+Enhancement E1 speeds up 20\% of the time by $10\times$; E2 speeds up 50\% of
+the time by $1.6\times$ (different parts). Which one alone is better? What do
+you get with both?
+\end{exercise}
+
+\begin{exercise}\label{p:percent}
+(a) X takes 8~s and Y takes 12~s. How much faster is X?
+(b) X is 25\% faster than Y, and Y takes 10~s. How long does X take?
+\end{exercise}
+
+\begin{exercise}\label{p:compilerchange}
+A new compiler reduces instruction count by 20\% but raises CPI by 10\%.
+Speedup?
+\end{exercise}
+
+\begin{exercise}\label{p:mips}
+A 500~MHz machine runs a mix of 60\% (CPI 1), 30\% (CPI 2), 10\% (CPI 4).
+Find CPI, MIPS rating, and the time for $10^9$ instructions.
+\end{exercise}
+
+\begin{exercise}\label{p:unix}
+\texttt{time} prints \texttt{45.3u 4.7s 1:40 50\%}. Check the 50\% and find
+what fraction of CPU time is user time.
+\end{exercise}
+
+\begin{exercise}\label{p:die}
+Wafer diameter 20~cm, wafer cost \$1000, defect density 0.8/cm$^2$,
+$\alpha=4$, wafer yield 100\%. Find dies per wafer, die yield and die cost
+for (a) a 1~cm$^2$ die and (b) a 0.5~cm$^2$ die.
+\end{exercise}
+
+\begin{exercise}\label{p:geo}
+Times (s) for P1, P2: machine A $(2, 20)$, machine B $(4, 10)$, reference R
+$(4, 20)$. Compare A and B by total time and by geometric mean of
+normalized times. Repeat the geometric mean using A as the reference.
+\end{exercise}
+
+% ============================================================================
+\section{Solutions to the Practice Problems}
+
+\begin{solution}[\ref{p:time}]
+$T = 2\times10^9 \times 1.5 / (2.5\times10^9) = 1.2$~s.
+\end{solution}
+
+\begin{solution}[\ref{p:compare}]
+$T_B = 2\times10^9\times1.2/(2.2\times10^9) = 1.091$~s. B is faster:
+$1.2/1.091 = 1.10$, i.e.\ 10\% faster.
+\end{solution}
+
+\begin{solution}[\ref{p:clock}]
+Cycles on A $= 10\times2\times10^9 = 2\times10^{10}$. B needs
+$2.4\times10^{10}$ cycles in 6~s: $f_B = 2.4\times10^{10}/6 = 4$~GHz.
+\end{solution}
+
+\begin{solution}[\ref{p:compilers}]
+X: $I=7$M, cycles $=4+4+3=11$M, $\CPI=1.57$, $T=11$~ms, MIPS
+$=1000/1.57=636$.
+Y: $I=6$M, cycles $=2+4+6=12$M, $\CPI=2.0$, $T=12$~ms, MIPS $=500$.
+X is faster ($12/11=1.09\times$) even though it executes more instructions.
+\end{solution}
+
+\begin{solution}[\ref{p:mix}]
+$\CPI = 0.45+1.00+0.30+0.40 = 2.15$. Time fractions: ALU $20.9\%$, Load
+$46.5\%$, Store $14.0\%$, Branch $18.6\%$.
+\end{solution}
+
+\begin{solution}[\ref{p:choose}]
+(a) New $\CPI = 2.15-0.25\times2 = 1.65$, speedup $=2.15/1.65=1.30$.
+(b) New $\CPI = 2.15-0.20\times1 = 1.95$, speedup $=1.10$.
+Option (a) wins: loads are the common case in \emph{time} (46.5\%).
+Amdahl check for (a): $1/(0.535+0.465/2) = 1.30$.
+\end{solution}
+
+\begin{solution}[\ref{p:vector}]
+$1/(0.6+0.4/10) = 1/0.64 = 1.56$. Even an infinitely fast vector unit gives
+at most $1/0.6 = 1.67$.
+\end{solution}
+
+\begin{solution}[\ref{p:target}]
+For 2: $0.5 = 0.3 + 0.7/S \Rightarrow S = 3.5$. For 3.5: $1/3.5=0.286 <
+0.3$, impossible; the maximum is $1/0.3=3.33$.
+\end{solution}
+
+\begin{solution}[\ref{p:twoenh}]
+E1: $1/(0.8+0.02) = 1.22$. E2: $1/(0.5+0.3125) = 1.23$. E2 is (slightly)
+better. Both: $1/(0.3+0.02+0.3125)=1/0.6325 = 1.58$.
+\end{solution}
+
+\begin{solution}[\ref{p:percent}]
+(a) $n = 100\times(12-8)/8 = 50\%$.
+(b) $\text{ExTime}_Y/\text{ExTime}_X = 1.25 \Rightarrow \text{ExTime}_X
+= 10/1.25 = 8$~s (not $7.5$~s).
+\end{solution}
+
+\begin{solution}[\ref{p:compilerchange}]
+$T'/T = 0.8\times1.1 = 0.88$, so speedup $=1/0.88 = 1.14$.
+\end{solution}
+
+\begin{solution}[\ref{p:mips}]
+$\CPI = 0.6+0.6+0.4 = 1.6$; MIPS $=500/1.6 = 312.5$;
+$T = 10^9\times1.6/(5\times10^8) = 3.2$~s ($=10^9/312.5\times10^6$).
+\end{solution}
+
+\begin{solution}[\ref{p:unix}]
+Elapsed $=100$~s; $(45.3+4.7)/100 = 50\%$. User share of CPU time
+$=45.3/50 = 90.6\%$.
+\end{solution}
+
+\begin{solution}[\ref{p:die}]
+(a) Dies $= \pi\cdot100/1 - \pi\cdot20/\sqrt2 = 314.2-44.4 = 269$.
+Yield $=(1+0.8/4)^{-4} = 1.2^{-4} = 0.482$. Die cost
+$=1000/(269\times0.482) = \$7.71$.
+(b) Dies $=628.3 - 62.8 = 565$. Yield $=1.1^{-4}=0.683$. Die cost
+$=1000/(565\times0.683) = \$2.59$.
+Halving the area cuts the die cost by about $3\times$: more dies fit
+\emph{and} each is less likely to contain a defect.
+\end{solution}
+
+\begin{solution}[\ref{p:geo}]
+Total time: A $=22$~s, B $=14$~s, so B is better for this workload.
+Normalized to R: A $=(0.5, 1.0)$, B $=(1.0, 0.5)$; both geometric means
+are $\sqrt{0.5}=0.707$, a tie. Normalized to A: A $=(1,1)\to1$, B
+$=(2, 0.5)\to1$, again a tie. The geometric mean is consistent across
+references, but it does not track total execution time.
+\end{solution}
+
+% ============================================================================
+\section{Solutions to the Exam-Style Questions}
+
+\begin{solution}[\ref{x:p1p2}]
+\leavevmode
+\begin{enumerate}[label=(\alph*),leftmargin=*]
+  \item $\CPI_{P1} = 0.5(1)+0.3(3)+0.2(5) = 0.5+0.9+1.0 = 2.4$.
+  \item $\text{MIPS}_{P1} = 2000/2.4 = 833.3$.
+  \item $\CPI_{P2} = 0.5(2)+0.3(2)+0.2(6) = 1.0+0.6+1.2 = 2.8$.
+  \item $\text{MIPS}_{P2} = 2500/2.8 = 892.9$.
+  \item $T_{P1} = 15\times10^9\times2.4/(2\times10^9) = 18$~s;
+  $T_{P2} = 15\times10^9\times2.8/(2.5\times10^9) = 16.8$~s. P2 is faster:
+  $18/16.8 = 1.071$, i.e.\ 7.1\% faster.
+  \item New $\CPI_{P1} = 0.5+0.9+0.2(3) = 2.0$, $T = 15$~s, speedup $18/15 =
+  1.2$. Amdahl: class C took $1.0/2.4 = 41.7\%$ of the time, $S = 5/3$:
+  $1/(0.583 + 0.417\times0.6) = 1/0.833 = 1.2$. P1 is now faster than P2 by
+  $16.8/15 = 1.12$ (12\%).
+\end{enumerate}
+\end{solution}
+
+\begin{solution}[\ref{x:compilers}]
+\leavevmode
+\begin{enumerate}[label=(\alph*),leftmargin=*]
+  \item X: $I = 10\times10^9$, cycles $= 6+4+8 = 18\times10^9$, $\CPI = 1.8$.
+  Y: $I = 15.5\times10^9$, cycles $= 12+4+6 = 22\times10^9$, $\CPI = 22/15.5
+  = 1.42$.
+  \item X: $3000/1.8 = 1667$ MIPS. Y: $3000/1.42 = 2114$ MIPS.
+  \item X: $18\times10^9/(3\times10^9) = 6$~s. Y: $22\times10^9/(3\times10^9)
+  = 7.33$~s.
+  \item MIPS favours Y, but X is faster: $7.33/6 = 1.22$, i.e.\ 22\% faster.
+  Y executes many more (cheap) instructions, which raises MIPS but also the
+  total time.
+  \item Cycles $= 6 + 4 + 2\times2 = 14\times10^9$, $T = 4.67$~s.
+  \item Class C took $8/18 = 44.4\%$ of X's time, $S = 2$:
+  $1/(0.556 + 0.222) = 1.286 = 6/4.67$. \checkmark
+\end{enumerate}
+\end{solution}
+
+\begin{solution}[\ref{x:die}]
+\leavevmode
+\begin{enumerate}[label=(\alph*),leftmargin=*]
+  \item $\dfrac{\pi(15)^2}{1.2} - \dfrac{\pi\cdot30}{\sqrt{2.4}} = 589.0 -
+  60.8 = 528$ dies.
+  \item $(1 + 0.5\times1.2/4)^{-4} = 1.15^{-4} = 0.572$.
+  \item $528\times0.572 \approx 302$ good dies.
+  \item $6000/301.9 \approx \$19.9$.
+  \item Dies $= 883.6 - 74.5 = 809$; yield $= (1+0.1)^{-4} = 0.683$; good dies
+  $\approx 553$; cost $= 7000/552.6 \approx \$12.7$.
+  \item A smaller die gives more dies per wafer (fewer wasted at the edge, too)
+  \emph{and} a higher yield, because each die is less likely to contain a
+  defect. The two effects multiply, so cost falls faster than area (here a
+  33\% smaller die is 36\% cheaper even though the wafer costs 17\% more).
+\end{enumerate}
+\end{solution}
+
+\end{document}
