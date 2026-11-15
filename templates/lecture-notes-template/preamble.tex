@@ -1,0 +1,263 @@
+\providecommand{\notesdir}{.}
+
+% -----------------------------------------------------------------------------
+% Shared preamble for a course's topic notes (template).
+% Change the course information and the textbook-citation block below.
+% Documents outside this folder define \notesdir (path to this folder) first.
+% -----------------------------------------------------------------------------
+
+% Page layout and typography
+\usepackage[a4paper,portrait,margin=1in]{geometry}
+\usepackage{fontspec}
+\usepackage{microtype}
+\usepackage{parskip}
+\setlength{\emergencystretch}{1.5em}% fewer overfull lines
+
+% Mathematics and diagrams
+\usepackage{amsmath,amssymb,amsthm,mathtools}
+\usepackage{tikz-cd}
+\usetikzlibrary{arrows.meta,positioning,shapes.geometric,shapes.arrows,
+  shapes.multipart,calc,fit,backgrounds,matrix,patterns,decorations.pathreplacing}
+
+% Reusable styles for flowcharts and concept diagrams.
+\tikzset{
+  concept/.style={
+    draw=brandprimary,
+    fill=brandsecondary!8,
+    rounded corners,
+    minimum width=3.2cm,
+    minimum height=0.9cm,
+    align=center,
+    font=\small,
+  },
+  diagram arrow/.style={-{Latex[length=2.5mm]},thick,brandprimary},
+  % tree nodes (e.g. Tree-LRU) and hardware blocks
+  tnode/.style={draw,rectangle,font=\small\ttfamily,inner sep=3pt,
+    minimum height=0.55cm,fill=white},
+  box/.style={draw,rectangle,align=center,font=\small,inner sep=4pt,
+    fill=white},
+}
+
+% Tables, figures, code, and lists
+\usepackage{graphicx}
+\graphicspath{{\notesdir/}}
+\usepackage{enumitem}
+\usepackage{booktabs}
+% array is pinned: a newer array.sty in the local texmf tree needs a newer
+% LaTeX kernel than the installed one; the dated rollback works with both.
+\usepackage{array}[=2024-06-01]
+% P{w}: paragraph column set ragged right (no stretched word gaps in tables)
+\newcolumntype{P}[1]{>{\raggedright\arraybackslash}p{#1}}
+\usepackage{listings}
+
+% Color and links
+\usepackage[dvipsnames]{xcolor}
+% Same palette as the other course notes (co5115):
+% brandprimary = navy lines/arrows/links, brandsecondary!NN = light blue fills.
+\definecolor{brandprimary}{HTML}{030391}
+\definecolor{brandsecondary}{HTML}{1488D8}
+\usepackage[
+  colorlinks=true,
+  linkcolor=brandprimary,
+  citecolor=brandsecondary,
+  urlcolor=brandsecondary
+]{hyperref}
+
+% Headers and footers
+\usepackage{fancyhdr}
+\setlength{\headheight}{26pt}
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{\small\textbf{\coursecode}\\\coursename}
+\fancyhead[R]{\small HCMUT}
+\fancyfoot[L]{\small Semester \semester}
+\fancyfoot[R]{\small Page \thepage}
+
+% -----------------------------------------------------------------------------
+% Course information -- change these values once per course
+% -----------------------------------------------------------------------------
+\newcommand{\universityname}{HCMC University of Technology}
+\newcommand{\faculty}{Faculty of Computer Science and Engineering}
+\newcommand{\coursecode}{COxxxx}
+\newcommand{\coursename}{Course Name}
+\newcommand{\semester}{261}
+\newcommand{\instructor}{Instructor Name}
+\newcommand{\instructoremail}{}% leave empty to hide
+\newcommand{\notetaker}{Phan Nhat Minh}
+\newcommand{\notetakeremail}{minh.phannhat95@hcmut.edu.vn}
+\newcommand{\emaillink}[1]{%
+  \href{mailto:#1}{\textcolor{brandprimary}{\texttt{#1}}}}
+
+% Definitions, results, examples, proofs and notes in coloured boxes.
+\input{\notesdir/colored-boxes}
+
+% -----------------------------------------------------------------------------
+% Course-specific notation
+% -----------------------------------------------------------------------------
+\newcommand{\CPI}{\mathrm{CPI}}
+\newcommand{\AMAT}{\mathrm{AMAT}}
+
+\lstdefinestyle{plain}{
+  basicstyle=\ttfamily\small,
+  showstringspaces=false,
+  columns=fullflexible,
+  keepspaces=true,
+  breaklines=true,
+  frame=single,
+  framerule=0.3pt,
+  rulecolor=\color{black!30},
+  xleftmargin=4pt,
+  xrightmargin=4pt,
+}
+\lstdefinestyle{mips}{
+  style=plain,
+  keywordstyle=\bfseries,
+  morekeywords={lw,sw,add,sub,and,or,slt,beq,bne,beqz,xor,nop,addi,addiu,addu,
+    subu,li,la,jal,jr,jalr,sll,srl,sra,sllv,srlv,srav,andi,ori,xori,nor,slti,
+    sltiu,sltu,lui,mult,multu,div,divu,mfhi,mflo,ll,sc,syscall,move,lh,lhu,lb,
+    lbu,sh,sb,blez,bgtz,bltz,bgez,j,mul,ld,sd,dadd,daddu,daddi,daddui,dsub,
+    dsubu,bnez,l.d,s.d,add.d,sub.d,mul.d,div.d},
+}
+\lstset{style=mips}
+
+% Long identifiers (GRADE_REPORT.Section_identifier) may break after "_".
+\makeatletter
+\DeclareRobustCommand{\_}{\ifmmode\nfss@text{\textunderscore}\else
+  \textunderscore\allowbreak\fi}
+\makeatother
+
+% Marks a correction of an error in the slides: \begin{remark}\slidefix{} ...
+\newcommand{\slidefix}{\textbf{\textcolor{red!75!black}{Slide correction.}}}
+% Marks material added from the textbook or papers, not in the slides.
+\newcommand{\beyond}{\textbf{Beyond the slides.}}
+
+% -----------------------------------------------------------------------------
+% Textbook citations as footnotes (book page + PDF page of textbooks/*.pdf)
+% -----------------------------------------------------------------------------
+% \srcnote{text}: a footnote that also works inside the coloured boxes
+% (mdframed/tcolorbox would otherwise keep it inside the box with a letter).
+% In a box it prints the mark and queues the text; the queue is emptied after
+% the box (hooks below), so the note lands at the foot of the page.
+\makeatletter
+\newtoks\srcnote@pending
+\def\srcnote@mp{mpfootnote}
+\newcommand{\srcnote}[1]{%
+  \ifx\@mpfn\srcnote@mp
+    \stepcounter{footnote}%
+    \protected@xdef\@thefnmark{\thefootnote}%
+    \@footnotemark
+    \xdef\srcnote@n{\the\c@footnote}%
+    \global\srcnote@pending\expandafter{\the\expandafter\srcnote@pending
+      \expandafter\footnotetext\expandafter[\srcnote@n]{#1}}%
+  \else\footnote{#1}\fi}
+\newcommand{\srcnote@flush}{\the\srcnote@pending\global\srcnote@pending{}}
+\@for\srcnote@env:={theorem,definition,proposition,prop,lemma,corollary,%
+exercise,tbexercise,example,eg,remark,note,solution,explanation,noot}\do{%
+  \AddToHook{env/\srcnote@env/after}{\srcnote@flush}}
+\makeatother
+% Textbook citations. Example: Hennessy & Patterson, Computer Architecture: A
+% Quantitative Approach, 5th ed. Replace the book name in \HP, \HPA and tbexercise
+% and the page offsets (PDF page - printed page) for your textbook PDF.
+% Chapters: PDF page = printed page + 29.  Appendix X: page X-n is PDF n + offset.
+\makeatletter
+\@namedef{HPoff@}{29}
+\@namedef{HPoff@A}{523}\@namedef{HPoff@B}{579}\@namedef{HPoff@C}{647}
+\@namedef{HPoff@D}{736}\@namedef{HPoff@E}{804}\@namedef{HPoff@F}{831}
+\@namedef{HPoff@G}{949}\@namedef{HPoff@H}{984}\@namedef{HPoff@I}{1029}
+\@namedef{HPoff@J}{1076}\@namedef{HPoff@K}{1150}
+% \hppage{X}{n}: "p. X-n (PDF p. m)"; X empty for a chapter page.
+\newcommand{\hppage}[2]{p.~\if\relax\detokenize{#1}\relax\else#1-\fi#2\
+  (PDF~\the\numexpr#2+\csname HPoff@#1\endcsname\relax)}
+% \hppages{X}{first}{last}
+\newcommand{\hppages}[3]{pp.~\if\relax\detokenize{#1}\relax\else#1-\fi#2--%
+  \if\relax\detokenize{#1}\relax\else#1-\fi#3\
+  (PDF~\the\numexpr#2+\csname HPoff@#1\endcsname\relax--%
+  \the\numexpr#3+\csname HPoff@#1\endcsname\relax)}
+\makeatother
+% Footnote citations:
+%   \HP{location}{page}            chapter page          \HP[last]{loc}{first}
+%   \HPA{X}{location}{page}        appendix X page X-n   \HPA[last]{X}{loc}{first}
+\newcommand{\HP}[3][]{\srcnote{H\&P 5th ed., #2,
+  \if\relax\detokenize{#1}\relax\hppage{}{#3}\else\hppages{}{#3}{#1}\fi.}}
+\newcommand{\HPA}[4][]{\srcnote{H\&P 5th ed., #3,
+  \if\relax\detokenize{#1}\relax\hppage{#2}{#4}\else\hppages{#2}{#4}{#1}\fi.}}
+
+% Textbook exercise. No solution is written: the box cites the exercise and
+% the book pages with the theory needed to solve it.
+% \begin{tbexercise}[appendix letter]{H&P number}{page}{theory pointer}
+%   e.g. \begin{tbexercise}{1.8}{60}{\S1.9, \hppages{}{46}{48}}
+%        \begin{tbexercise}[B]{B.1}{60}{\S B.2, \hppages{B}{15}{22}}
+\makeatletter
+\newenvironment{tbexercise}[4][]
+  {\gdef\tbx@note{\srcnote{H\&P 5th ed., Exercise #2, \hppage{#1}{#3}.}}%
+   \gdef\tbx@theory{#4}%
+   \begin{exercise}[H\&P #2]}
+  {\par\hfill{\small\itshape Theory: \tbx@theory}\tbx@note
+   \end{exercise}}
+\makeatother
+% Source note under a diagram, for checking it against the original:
+% \diagramsource{slides file, slide N; cf. textbook figure}
+\newcounter{diagram}
+% (the counter is stepped inside the note's line, so no page break can fall
+% between the diagram and its note)
+\newcommand{\diagramsource}[1]{\par\nopagebreak
+  {\centering\footnotesize\itshape\color{black!65}\leavevmode\refstepcounter{diagram}%
+   Diagram~\thediagram\ -- source: #1\par}}
+
+% Source line under a section heading.
+\newcommand{\sources}[1]{\par\noindent{\small\itshape\sloppy Sources: #1\par}\medskip}
+
+% Cover page + contents page.  Usage: \makecover{Big title}
+\newcommand{\makecover}[1]{%
+\pagenumbering{roman}
+\begin{titlepage}
+  \thispagestyle{empty}
+  \renewcommand{\emaillink}[1]{\href{mailto:##1}{\textcolor{black}{\texttt{##1}}}}% no colour on the cover
+
+  \begin{center}
+    \includegraphics[width=0.62\textwidth]{assets/text_logo_3.png}
+
+    \vspace{0.35cm}
+    {\large\bfseries\faculty\par}
+  \end{center}
+
+  \vfill
+  \begin{center}
+    {\Huge\bfseries #1\par}
+    \vspace{0.55cm}
+    {\LARGE\bfseries\coursename\par}
+    \vspace{0.2cm}
+    {\large\coursecode\par}
+
+    \vspace{0.65cm}
+    \rule{0.38\textwidth}{0.6pt}
+    \vspace{0.65cm}
+
+    {\large\textbf{Instructor:} \instructor
+      \ifx\instructoremail\empty\else\ {\small(\emaillink{\instructoremail})}\fi\par}
+    \vspace{0.3cm}
+    {\large\textbf{Notes by:} \notetaker\
+      {\small(\emaillink{\notetakeremail})}\par}
+    \vspace{0.3cm}
+    {\large\textbf{Semester:} \semester\par}
+  \end{center}
+
+  \vfill
+  \begin{center}
+    \small Last updated: \today
+  \end{center}
+\end{titlepage}
+
+% -----------------------------------------------------------------------------
+% Table of contents -- kept on its own page
+% -----------------------------------------------------------------------------
+\clearpage
+\setcounter{page}{2}
+\thispagestyle{empty}
+\hypersetup{linkcolor=black}
+\setcounter{tocdepth}{2}
+\tableofcontents
+\hypersetup{linkcolor=brandprimary}
+\clearpage
+\pagenumbering{arabic}
+}
