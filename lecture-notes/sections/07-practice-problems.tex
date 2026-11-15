@@ -1,0 +1,685 @@
+\section{Practice Problems}
+\label{sec:practice}
+
+The exercises of the slides and further exam-style problems, with complete
+solutions; the ones the slides left to the students are solved too. Every number
+was recomputed by a small program. The final exam review
+(\texttt{reviews/final\_exam\_review/}) holds the lecturer's review questions and
+more exam-style questions on every topic.
+
+\providecommand{\enc}[2]{\par{\centering\texttt{#1} $=$ \texttt{#2}\par}}
+
+\subsection{Performance, Cost and Amdahl's Law}
+
+\begin{exercise}[Unix \texttt{time}]
+The command prints \texttt{90.7u 12.9s 2:39 65\%}. Interpret it.
+\end{exercise}
+\begin{solution}
+User CPU $=90.7$~s, system CPU $=12.9$~s, elapsed $=2{:}39=159$~s. CPU
+time $=103.6$~s, and $103.6/159 = 65\%$ of the elapsed time. The other
+35\% is I/O or time spent running other programs.
+\end{solution}
+
+\begin{exercise}[Two notions of performance]
+Boeing 747: 6.5~h DC--Paris, 610~mph, 470 passengers. Concorde: 3~h,
+1350~mph, 132 passengers. Compare latency and throughput.
+\end{exercise}
+\begin{solution}
+Latency: Concorde is $6.5/3 = 1350/610 = 2.2\times$ faster.
+Throughput (passenger-miles per hour): Boeing $470\times610=286{,}700$,
+Concorde $132\times1350=178{,}200$. Boeing is $286{,}700/178{,}200 =
+1.6\times$ higher throughput. Which is ``faster'' depends on the metric.
+\end{solution}
+
+\begin{exercise}[Price-performance: train vs.\ plane]
+Move 2400 people. Train: 4~h trip, 2400 seats, 300~Rs/person. Plane: 45~min
+trip, 300 seats, 3000~Rs/person. Compare time per person and cost-performance.
+\end{exercise}
+\begin{solution}
+Plane needs $2400/300=8$ trips $=6$~h; train needs 4~h. Time per person:
+train $4\text{ h}/2400 = 6$~s, plane $6\text{ h}/2400=9$~s, so the train
+has 50\% better throughput even though each plane trip is $5\times$
+faster. Cost $\times$ time: train $300\times6=1800$, plane
+$3000\times9=27{,}000$ Rs$\cdot$s/person: the train is $15\times$ better.
+\end{solution}
+
+\begin{exercise}[Speedup]
+A program takes 1~s on machine A and 10~s on machine B. Speedup of A over B?
+\end{exercise}
+\begin{solution}
+$\text{Speedup} = \text{ExTime}_B/\text{ExTime}_A = 10/1 = 10$: A is
+10 times faster.
+\end{solution}
+
+\begin{exercise}[CPU time]
+$I = 10{,}000{,}000$ instructions, $\CPI=2.5$, clock 200~MHz. CPU time?
+\end{exercise}
+\begin{solution}
+$C = 1/200\text{ MHz} = 5\times10^{-9}$~s, so
+$T = 10^7\times2.5\times5\times10^{-9} = 0.125$~s.
+\end{solution}
+
+\begin{exercise}[New compiler and faster CPU]
+Same program. A new compiler gives $I'=9{,}500{,}000$ and $\CPI'=3.0$; the
+new CPU runs at 300~MHz. Speedup?
+\end{exercise}
+\begin{solution}
+$T' = 9.5\times10^6\times3.0/(300\times10^6) = 0.095$~s.
+Speedup $=0.125/0.095 = 1.32$, i.e.\ 32\% faster.
+\end{solution}
+
+\begin{exercise}[Instruction classes]
+$\CPI_A=1$, $\CPI_B=2$, $\CPI_C=3$. Sequence 1 has counts $(2,1,2)$,
+sequence 2 has $(4,1,1)$. Find each CPI. Which is faster?
+\end{exercise}
+\begin{solution}
+Seq.~1: cycles $=2+2+6=10$, $I=5$, $\CPI=2.0$.
+Seq.~2: cycles $=4+2+3=9$, $I=6$, $\CPI=1.5$.
+Sequence 2 is faster (9 vs.\ 10 cycles) even though it executes \emph{more}
+instructions.
+\end{solution}
+
+\begin{exercise}[RISC instruction mix]
+ALU 50\% (CPI 1), Load 20\% (CPI 5), Store 10\% (CPI 3), Branch 20\% (CPI 2).
+Find the CPI and the fraction of time spent in each class.
+\end{exercise}
+\begin{solution}
+$\CPI = 0.5+1.0+0.3+0.4 = 2.2$. Time fractions: ALU $0.5/2.2=23\%$, Load
+$1.0/2.2=45\%$, Store $0.3/2.2=14\%$, Branch $0.4/2.2=18\%$.
+\end{solution}
+
+\begin{exercise}[$n\%$ faster]
+Y takes 15~s, X takes 10~s. How much faster is X?
+\end{exercise}
+\begin{solution}
+$n = 100\,(15-10)/10 = 50\%$.
+\end{solution}
+
+\begin{exercise}[Amdahl: floating point]
+FP instructions become $2\times$ faster, but only 10\% of the time is FP.
+Overall speedup?
+\end{exercise}
+\begin{solution}
+$\text{ExTime}_{new} = (0.9 + 0.1/2)\,\text{ExTime}_{old} =
+0.95\,\text{ExTime}_{old}$, so Speedup $=1/0.95 = 1.053$.
+\end{solution}
+
+\begin{exercise}[Amdahl: load CPI]
+In the RISC mix above, load CPI improves from 5 to 2. Speedup?
+\end{exercise}
+\begin{solution}
+Loads take $F=45\%$ of the time (not 20\%), $S=5/2=2.5$:
+$\text{Speedup}=1/(0.55+0.45/2.5) = 1/0.73 = 1.37$.
+Check with CPI: new $\CPI = 0.5+0.2\times2+0.3+0.4 = 1.6$, and
+$2.2/1.6 = 1.37$.
+\end{solution}
+
+\begin{exercise}[How fast must multiply be?]
+A program runs in 100~s, of which multiply takes 80~s. How much faster must
+multiply be to make the program (a) $4\times$ faster, (b) $5\times$ faster?
+\end{exercise}
+\begin{solution}
+(a) Target 25~s: $25 = 20 + 80/n \Rightarrow n = 16$.
+(b) Target 20~s: $20 = 20 + 80/n \Rightarrow 80/n = 0$: impossible. The
+unaffected 20~s already equals the target ($1/(1-F) = 1/0.2 = 5$ is the
+limit and cannot be reached).
+\end{solution}
+
+\begin{exercise}[Multiple enhancements]
+$S_1=10, F_1=20\%$; $S_2=15, F_2=15\%$; $S_3=30, F_3=10\%$ (disjoint
+parts). Overall speedup?
+\end{exercise}
+\begin{solution}
+$\text{Speedup} = 1/\big(0.55 + 0.02 + 0.01 + 0.0033\big) = 1/0.5833 =
+1.71$.
+\end{solution}
+
+\begin{exercise}[MIPS can mislead]
+Clock 100~MHz; CPI of classes A, B, C $=1,2,3$. Compiler 1 produces
+$(5,1,1)$ million instructions; compiler 2 produces $(10,1,1)$ million.
+Compare MIPS and CPU time.
+\end{exercise}
+\begin{solution}
+Compiler 1: $\CPI = 10/7 = 1.43$, MIPS $=100/1.43 = 70$, time
+$=7\times10^6\times1.43/10^8 = 0.10$~s.
+Compiler 2: $\CPI = 15/12 = 1.25$, MIPS $= 80$, time
+$=12\times10^6\times1.25/10^8 = 0.15$~s.
+Compiler 2 has the higher MIPS but is \emph{slower}.
+\end{solution}
+
+\begin{exercise}[Dies per wafer]
+Die $0.7$~cm on a side, wafer diameter 30~cm. How many dies?
+\end{exercise}
+\begin{solution}
+$A=0.49\text{ cm}^2$:
+$\pi(15)^2/0.49 - \pi\cdot30/\sqrt{0.98} = 1442.6 - 95.2 \approx 1347$ dies.
+\end{solution}
+
+\begin{exercise}[Die yield]
+Same die, defect density $0.6$/cm$^2$, $\alpha=4$, wafer yield 100\%.
+\end{exercise}
+\begin{solution}
+$(1 + 0.6\times0.49/4)^{-4} = 1.0735^{-4} = 0.75$.
+\end{solution}
+
+\begin{exercise}[Weighted means]
+P1/P2 take 1/1000~s on A, 10/100~s on B, 20/20~s on C. Rank the machines
+under weights $(0.5,0.5)$, $(0.909,0.091)$, $(0.999,0.001)$.
+\end{exercise}
+\begin{solution}
+\begin{tabular}[t]{@{}lccc@{}}
+Weights & A & B & C \\
+\hline
+$.5/.5$     & 500.5 & 55.0  & \textbf{20} \\
+$.909/.091$ & 91.91 & \textbf{18.19} & 20 \\
+$.999/.001$ & \textbf{2.0} & 10.09 & 20 \\
+\end{tabular}
+
+Each weighting picks a different winner (C, then B, then A). 
+\end{solution}
+\begin{remark}
+\slidefix{} The slide prints 91.82 and 18.8 for the middle row; the exact values
+are 91.91 and 18.19. The ranking is the same.
+\end{remark}
+
+\subsection{Instruction Sets and MIPS}
+
+\begin{exercise}[Encode an R-format instruction]
+Encode \texttt{add \$t0, \$s1, \$s2}.
+\end{exercise}
+\begin{solution}
+opcode $0$, rs $=$ \texttt{\$s1} $=17$, rt $=$ \texttt{\$s2} $=18$, rd $=$ \texttt{\$t0} $=8$, shamt $0$, funct
+\texttt{0x20}:
+\enc{000000 10001 10010 01000 00000 100000}{0x02324020}
+\end{solution}
+
+\begin{exercise}[Shifts]
+Encode \texttt{sll \$t2,\$s0,8} and \texttt{sra \$t2,\$s0,8}. Why is there no
+\texttt{sla}, and how is \texttt{NOT} done?
+\end{exercise}
+\begin{solution}
+Shifts use rt as source and shamt as the amount; rs $=0$.
+\texttt{sll}: \enc{000000 00000 10000 01010 01000 000000}{0x00105200}
+\texttt{sra}: same with funct \texttt{000011} $=$ \texttt{0x00105203}.
+A left arithmetic shift would be identical to \texttt{sll} (zeros enter from
+the right either way), so it is not needed. \texttt{NOT} is
+\texttt{nor \$t0,\$t1,\$zero}.
+\end{solution}
+
+\begin{exercise}[I-format arithmetic and logical]
+Encode \texttt{addi \$t0,\$t1,0x0005} and
+\texttt{ori \$t0,\$t1,0xFF00}. Why is there no \texttt{subi}?
+\end{exercise}
+\begin{solution}
+rs $=$ \texttt{\$t1} $=9$, rt $=$ \texttt{\$t0} $=8$.
+\texttt{addi}: \enc{001000 01001 01000 0000000000000101}{0x21280005}
+\texttt{ori}: \enc{001101 01001 01000 1111111100000000}{0x3528FF00}
+\texttt{subi} is unnecessary: \texttt{addi} with a negative (sign-extended)
+immediate does the same job.
+\end{solution}
+
+\begin{exercise}[Loads and stores]
+Encode \texttt{lw \$t0,16(\$t1)} and \texttt{sw \$t0,16(\$t1)}.
+\end{exercise}
+\begin{solution}
+rs $=$ base \texttt{\$t1} $=9$, rt $=$ \texttt{\$t0} $=8$, imm $=16$.
+\texttt{lw}: \enc{100011 01001 01000 0000000000010000}{0x8D280010}
+\texttt{sw}: opcode \texttt{101011} $\Rightarrow$ \texttt{0xAD280010}.
+\end{solution}
+
+\begin{exercise}[Branch]
+Encode \texttt{beq \$s0,\$s1,256} (offset field $=256$).
+\end{exercise}
+\begin{solution}
+Encoding:
+\enc{000100 10000 10001 0000000100000000}{0x12110100}
+The target is PC$+4+256\times4$ = PC$+4+1024$.
+\end{solution}
+
+\begin{exercise}[Jump]
+Encode \texttt{j 0x01000000} as shown on the slide.
+\end{exercise}
+\begin{solution}
+The slide places \texttt{0x01000000} directly in the 26-bit field:
+\enc{000010 01000000000000000000000000}{0x09000000}
+The real target is $\{\text{PC}{+}4[31{:}28],\ \text{field},\ 00\}$, i.e.\
+the field is a \emph{word} address. If you are given a byte target address
+instead, divide it by 4 first (divide a byte address by 4).
+\end{solution}
+
+\begin{exercise}[Move without MOV]
+Move \texttt{\$t0} into \texttt{\$t1} with one instruction.
+\end{exercise}
+\begin{solution}
+\texttt{add \$t1,\$t0,\$zero} (\texttt{or \$t1,\$t0,\$zero} or
+\texttt{addi \$t1,\$t0,0} also work).
+\end{solution}
+
+\begin{exercise}[Large constant]
+Load \texttt{0x12345678} into \texttt{\$t0}.
+\end{exercise}
+\begin{solution}
+\texttt{lui \$t0,0x1234} then \texttt{ori \$t0,\$t0,0x5678}. \texttt{ori}
+zero-extends its immediate, so the upper half is not disturbed.
+\end{solution}
+
+\begin{exercise}[Atomic swap with LL/SC]
+Explain the loop
+\texttt{try: add \$t0,\$zero,\$s4; ll \$t1,0(\$s1); sc \$t0,0(\$s1);
+beq \$t0,\$zero,try; add \$s4,\$zero,\$t1}.
+\end{exercise}
+\begin{solution}
+\texttt{ll} reads the old memory value into \texttt{\$t1}. \texttt{sc}
+tries to store \texttt{\$s4}'s copy; it writes 1 into \texttt{\$t0} on
+success, or 0 if the location changed since the \texttt{ll} (another
+processor intervened), in which case the loop retries. On success
+\texttt{\$s4} receives the old value: memory and \texttt{\$s4} have been
+swapped atomically.
+\end{solution}
+
+\begin{exercise}[Procedure-call convention]
+(1) Who saves the return address, caller or callee? (2) Who saves the
+necessary registers? (3) Must a leaf procedure save the return address?
+\end{exercise}
+\begin{solution}
+(1) The caller's \texttt{jal} writes the return address into \texttt{\$ra};
+it is the \textbf{callee} that must preserve it (push \texttt{\$ra} on the
+stack) if the callee itself calls other procedures, because \texttt{\$ra} is
+``preserved across a call''. (2) Both share the work: the \textbf{callee}
+saves the \texttt{\$s} registers it uses (callee-saved); the \textbf{caller}
+saves any \texttt{\$t}/\texttt{\$a}/\texttt{\$v} registers it still needs
+after the call (caller-saved). (3) \textbf{No}: a leaf procedure makes no
+\texttt{jal}, so \texttt{\$ra} is never overwritten and it can return with
+\texttt{jr \$ra} directly.
+\end{solution}
+
+\begin{exercise}[Review quiz]
+(1) In MIPS, \texttt{NOT} is done with: a.\ \texttt{NOT}, b.\ \texttt{NOR},
+c.\ \texttt{NAND}, d.\ none.
+(2) An addressing mode is: a.\ how an operand (or a jump target) is
+referenced, b.\ how memory is organized by byte/halfword/word, c.\
+endianness, d.\ all of these.
+(3) MIPS \texttt{LO}/\texttt{HI} are used for: a.\ low/high addresses, b.\
+multiply/divide, c.\ both, d.\ neither.
+(4) MIPS stores data as: a.\ little-endian, b.\ big-endian, c.\ both, d.\
+no endianness.
+\end{exercise}
+\begin{solution}
+(1) \textbf{b} -- \texttt{nor \$t0,\$t1,\$zero}.
+(2) \textbf{a}.
+(3) \textbf{b} -- \texttt{mult}/\texttt{div} put results in Hi/Lo
+(\texttt{mfhi}/\texttt{mflo} read them).
+(4) \textbf{b} -- big-endian, as stated in the lecture (real MIPS chips can
+be configured either way, but the expected quiz answer is b).
+\end{solution}
+
+\begin{exercise}[C to MIPS]
+Which sequences implement \texttt{if (a==0) a=1; else a=0;}?
+\begin{enumerate}[label=(\Alph*),leftmargin=*]
+  \item \texttt{lw \$t0,a; bne \$t0,\$0,L1; addi \$t0,\$0,1; b L2;}\\
+        \texttt{L1: add \$t0,\$0,\$0; L2: sw \$t0,a}
+  \item \texttt{lw \$t0,a; beq \$t0,\$0,L1; sw \$0,a; b L2;}\\
+        \texttt{L1: addi \$t0,\$0,1; sw \$t0,a; L2:}
+  \item \texttt{lw \$t0,a; sltiu \$t0,\$t0,1; sw \$t0,a}
+  \item \texttt{lw \$t0,a; addi \$t1,\$0,1; beq \$t0,\$0,L1;}\\
+        \texttt{addi \$t1,\$0,0; L1: sw \$t1,a}
+  \item All of the above.
+\end{enumerate}
+\end{exercise}
+\begin{solution}
+\textbf{E}. (A) jumps to L1 when $a\neq0$ and stores 0, otherwise stores 1.
+(B) branches to L1 when $a=0$ and stores 1, otherwise stores \texttt{\$0}.
+(C) \texttt{sltiu} sets \texttt{\$t0} $=1$ iff $a<1$ unsigned, i.e.\ iff
+$a=0$. (D) presets 1 and overwrites it with 0 only when $a\neq0$.
+Caveat: this assumes no branch delay slots (the assembler/simulator
+default). With delay slots exposed, the instruction after every branch
+always executes: in (A) the \texttt{add} after \texttt{b L2} would zero
+\texttt{\$t0} before the store, and in (D) the \texttt{addi \$t1,\$0,0}
+would always run, so both would store 0. (B) and (C) would still be
+correct.
+\end{solution}
+
+\subsection{Pipelining and Hazards}
+
+\begin{exercise}[Laundry]
+Wash 30~min, dry 40~min, fold 20~min; 4 loads. Sequential vs.\ pipelined
+time and speedup?
+\end{exercise}
+\begin{solution}
+Sequential: $4\times90 = 360$~min $=6$~h. Pipelined: the 40-min dryer sets
+the pace: $30 + 4\times40 + 20 = 210$~min $=3.5$~h. Speedup $=6/3.5 =
+1.7$ (not 3), because stages are unbalanced and the pipeline must fill and
+drain.
+\end{solution}
+
+\begin{exercise}[Single-cycle vs.\ pipelined]
+Stage times IF 2, Reg 1, ALU 2, Mem 2, WB 1~ns. Compare 3 loads, then 1003
+loads, on a single-cycle (8~ns) and a pipelined (2~ns) machine.
+\end{exercise}
+\begin{solution}
+3 loads: single-cycle $3\times8 = 24$~ns; pipelined $(5+2)\times2 = 14$~ns;
+speedup $1.7$.
+1003 loads: single-cycle $1003\times8 = 8024$~ns; pipelined
+$(5+1002)\times2 = 2014$~ns; speedup $3.98 \approx 8/2 = 4$. The speedup
+approaches the ratio of clock periods (not 5, because the stages are
+unbalanced: the 1-ns stages still take a 2-ns cycle).
+\end{solution}
+
+\begin{exercise}[Pipelining a multi-cycle CPU]
+Unpipelined: 1~ns clock, ALU/branch 4 cycles, memory 5 cycles; mix 40\%
+ALU, 20\% branch, 40\% memory. Pipelining adds 0.2~ns to the clock.
+Speedup?
+\end{exercise}
+\begin{solution}
+Unpipelined average $=1\times(0.6\times4 + 0.4\times5) = 4.4$~ns.
+Pipelined average $= 1.2$~ns (ideal $\CPI=1$). Speedup $=4.4/1.2 = 3.7$.
+\end{solution}
+
+\begin{exercise}[Structural hazard]
+Loads/stores are 40\% of instructions; the machine with one memory port
+stalls 1 cycle per data access but has a $1.05\times$ faster clock. Which is
+better?
+\end{exercise}
+\begin{solution}
+Hazard machine: $(1+0.4\times1)\times t/1.05 = 1.33\,t$ versus $1.0\,t$ for
+the ideal machine, so the machine without the hazard is $1.33\times$
+faster.
+\end{solution}
+
+\begin{exercise}[RAW hazard on R1]
+\texttt{add r1,r2,r3; sub r4,r1,r3; and r6,r1,r7; or r8,r1,r9;
+xor r10,r1,r11}. Stalls and total cycles without and with forwarding?
+\end{exercise}
+\begin{solution}
+Without forwarding \texttt{sub} ($d=1$) needs 2 stalls; after that every
+later reader is far enough behind:
+\begin{lstlisting}[basicstyle=\ttfamily\footnotesize,keywords={}]
+                c1    c2    c3    c4    c5    c6    c7    c8    c9    c10   c11
+add r1,r2,r3    IF    ID    EX    MEM   WB
+sub r4,r1,r3          IF    ID    stall stall EX    MEM   WB
+and r6,r1,r7                IF    stall stall ID    EX    MEM   WB
+or  r8,r1,r9                                  IF    ID    EX    MEM   WB
+xor r10,r1,r11                                      IF    ID    EX    MEM   WB
+\end{lstlisting}
+11 cycles. With forwarding (EX/MEM $\to$ EX to \texttt{sub}, MEM/WB $\to$ EX
+to \texttt{and}, register file for \texttt{or}/\texttt{xor}): 0 stalls,
+$5+4 = 9$ cycles.
+\end{solution}
+
+\begin{exercise}[Load-use hazard]
+\texttt{lw r1,0(r2); sub r4,r1,r6; and r6,r1,r7; or r8,r1,r9} with
+forwarding.
+\end{exercise}
+\begin{solution}
+The loaded value exists only at the end of MEM (cycle 4) but \texttt{sub}
+needs it at the start of its EX (cycle 4): 1 stall is unavoidable.
+\begin{lstlisting}[basicstyle=\ttfamily\footnotesize,keywords={}]
+              c1    c2    c3    c4    c5    c6    c7    c8    c9
+lw  r1,0(r2)  IF    ID    EX    MEM   WB
+sub r4,r1,r6        IF    ID    stall EX    MEM   WB
+and r6,r1,r7              IF    stall ID    EX    MEM   WB
+or  r8,r1,r9                          IF    ID    EX    MEM   WB
+\end{lstlisting}
+9 cycles ($5+3+1$).
+\end{solution}
+
+\begin{exercise}[Compiler scheduling]
+\texttt{a=b+c; d=e-f;} compiled as \texttt{lw Rb; lw Rc; add Ra; sw Ra;
+lw Re; lw Rf; sub Rd; sw Rd} (forwarding, 1-cycle load delay). Stalls
+before and after scheduling?
+\end{exercise}
+\begin{solution}
+Original: \texttt{add} right after \texttt{lw Rc} and \texttt{sub} right
+after \texttt{lw Rf} $\Rightarrow$ 2 stalls, $5+7+2 = 14$ cycles.
+Scheduled \texttt{lw Rb; lw Rc; lw Re; add Ra; lw Rf; sw Ra; sub Rd; sw Rd}:
+no load is immediately followed by its use $\Rightarrow$ 0 stalls, 12
+cycles.
+\end{solution}
+
+\begin{exercise}[Branch stall impact]
+30\% of instructions are branches with a 3-cycle stall. New CPI?
+\end{exercise}
+\begin{solution}
+$\CPI = 1 + 0.30\times3 = 1.9$ -- almost twice the ideal. With the branch
+resolved in ID (1 cycle): $1+0.3 = 1.3$.
+\end{solution}
+
+\begin{exercise}[Comparing branch schemes]
+4\% unconditional, 6\% conditional untaken, 10\% conditional taken;
+pipeline depth 5. Find CPI and speedups for stall, predict not taken,
+predict taken, delayed branch (penalty 0.5).
+\end{exercise}
+\begin{solution}
+\begin{tabular}[t]{@{}lcccc@{}}
+Scheme & CPI & vs.\ unpipelined & vs.\ stall \\
+\hline
+Stall: $1+0.20\times3$ & 1.60 & $5/1.6=3.1$ & 1.00 \\
+Not taken: $1+0.04\times1+0.10\times3$ & 1.34 & 3.7 & 1.19 \\
+Taken: $1+0.14\times1+0.06\times2$ & 1.26 & 4.0 & 1.27 \\
+Delayed: $1+0.20\times0.5$ & 1.10 & 4.5 & 1.45 \\
+\end{tabular}
+
+
+\end{solution}
+\begin{remark}
+\slidefix{} The slide lists 1.29 as the speedup of predict taken over stalling.
+That is the ratio of the rounded speedups $4.0/3.1$; the exact value is
+$1.6/1.26=1.27$.
+\end{remark}
+
+\begin{exercise}[CPI of a realistic mix]
+Loads 30\% (25\% followed immediately by a use), branches 20\% (45\%
+taken); forwarding, branch resolved in ID, predict not taken.
+\end{exercise}
+\begin{solution}
+$\CPI = 1 + 0.3\times0.25\times1 + 0.2\times0.45\times1 = 1.165$.
+\end{solution}
+
+\begin{exercise}[Hazards, NOPs and forwarding]
+\leavevmode
+\begin{lstlisting}
+(1) lw  $1, 40($6)
+(2) add $6, $2, $2
+(3) sw  $6, 50($1)
+(4) add $4, $5, $6
+(5) lw  $6, 10($4)
+\end{lstlisting}
+(A) Find all data dependencies. (B) Without forwarding, which cause hazards?
+(C) Insert NOPs so the code runs correctly without forwarding. (D) How many
+cycles does (C) take? (E) With full forwarding, how many cycles, and which
+forwarding paths are used?
+\end{exercise}
+\begin{solution}
+\textbf{(A)} RAW: (1)$\to$(3) on \texttt{\$1}; (2)$\to$(3) on \texttt{\$6};
+(2)$\to$(4) on \texttt{\$6}; (4)$\to$(5) on \texttt{\$4}.
+WAR: (1)$\to$(2), (3)$\to$(5), (4)$\to$(5) on \texttt{\$6}.
+WAW: (2)$\to$(5) on \texttt{\$6}.
+
+\textbf{(B)} Only RAW with $d\le2$: (1)$\to$(3) ($d=2$), (2)$\to$(3)
+($d=1$), (2)$\to$(4) ($d=2$), (4)$\to$(5) ($d=1$). WAR/WAW are not hazards
+here.
+
+\textbf{(C)} Each consumer must be at least 3 slots after its producer:
+\begin{lstlisting}
+lw  $1, 40($6)
+add $6, $2, $2
+nop
+nop
+sw  $6, 50($1)
+add $4, $5, $6
+nop
+nop
+lw  $6, 10($4)
+\end{lstlisting}
+\textbf{(D)} 9 instructions $\Rightarrow 5 + 8 = 13$ cycles:
+\begin{lstlisting}[basicstyle=\ttfamily\scriptsize,keywords={}]
+               c1   c2   c3   c4   c5   c6   c7   c8   c9   c10  c11  c12  c13
+lw  $1,40($6)  IF   ID   EX   MEM  WB
+add $6,$2,$2        IF   ID   EX   MEM  WB
+nop                      IF   ID   EX   MEM  WB
+nop                           IF   ID   EX   MEM  WB
+sw  $6,50($1)                      IF   ID   EX   MEM  WB
+add $4,$5,$6                            IF   ID   EX   MEM  WB
+nop                                          IF   ID   EX   MEM  WB
+nop                                               IF   ID   EX   MEM  WB
+lw  $6,10($4)                                          IF   ID   EX   MEM  WB
+\end{lstlisting}
+
+\textbf{(E)} No stalls are needed (the only load, (1), is used two
+instructions later), so $5+4 = 9$ cycles:
+\begin{lstlisting}[basicstyle=\ttfamily\footnotesize,keywords={}]
+               c1    c2    c3    c4    c5    c6    c7    c8    c9
+lw  $1,40($6)  IF    ID    EX    MEM   WB
+add $6,$2,$2         IF    ID    EX    MEM   WB
+sw  $6,50($1)              IF    ID    EX    MEM   WB
+add $4,$5,$6                     IF    ID    EX    MEM   WB
+lw  $6,10($4)                          IF    ID    EX    MEM   WB
+\end{lstlisting}
+Forwarding paths: cycle 5, MEM/WB $\to$ EX gives \texttt{\$1} (from (1)) and
+EX/MEM $\to$ EX gives \texttt{\$6} (from (2)) to the \texttt{sw}; cycle 6,
+MEM/WB $\to$ EX gives \texttt{\$6} (from (2)) to (4); cycle 7, EX/MEM $\to$
+EX gives \texttt{\$4} (from (4)) to (5).
+\end{solution}
+
+% =============================================================================
+\subsection{Cache}
+
+\begin{exercise}[Address breakdown]
+A 32~KiB cache has 64-byte blocks and 32-bit byte addresses. (a) Give the tag, index
+and offset widths for direct-mapped, 4-way and fully associative organizations.
+(b) Find the total storage of the 4-way write-back version. (c) Which set and tag
+does \texttt{0x12345678} map to in the 4-way cache?
+\end{exercise}
+\begin{solution}
+(a) Offset $\log_264=6$; 512 blocks. Direct mapped: index 9, tag 17. 4-way: 128 sets,
+index 7, tag 19. Fully associative: tag 26. (b) Per block $512+19+1+1=533$ bits;
+$512\times533=272{,}896$ bits $=34{,}112$ bytes. (c) Block address
+\texttt{0x12345678}$/64=$ \texttt{0x48D159}; set $=$ \texttt{0x48D159} mod 128 $=89$;
+tag $=$ \texttt{0x48D159}$/128=$ \texttt{0x91A2}.
+\end{solution}
+
+\begin{exercise}[Write policies]
+A direct-mapped cache of 4 one-word blocks starts empty. The CPU performs
+\texttt{W0 R0 W4 W4 R0 W8 R8 W0} (word addresses). Count the misses, blocks read from
+memory and words written to memory for (a) write-through with no-write allocate,
+(b) write-back with write allocate.
+\end{exercise}
+\begin{solution}
+(a) Writes never fill the cache: W0 M, R0 M (fetch), W4 M, W4 M, R0 H, W8 M, R8 M
+(fetch, replaces 0), W0 M: 7 misses, 2 blocks read, 5 words written. (b) W0 M (fetch,
+dirty), R0 H, W4 M (write back 0, fetch 4), W4 H, R0 M (write back 4, fetch 0), W8 M
+(0 clean, fetch 8), R8 H, W0 M (write back 8, fetch 0): 5 misses, 5 blocks read,
+3 words written; block 0 is dirty at the end.
+\end{solution}
+
+\begin{exercise}[Multilevel cache and CPI]
+L1 hit 1 cycle, miss rate 2\%; L2 hit 10 cycles, local miss rate 40\%; memory 100
+cycles; 1.3 memory accesses per instruction; $\CPI_{exec}=1$. Find the AMAT and the
+CPI with and without L2, and the L2 global miss rate.
+\end{exercise}
+\begin{solution}
+With L2: $\AMAT=1+0.02\times(10+0.4\times100)=2$ cycles; stalls per instruction
+$=1.3\times0.02\times50=1.3$, $\CPI=2.3$. Without: $\AMAT=1+0.02\times100=3$;
+stalls $1.3\times0.02\times100=2.6$, $\CPI=3.6$. Speedup $3.6/2.3=1.57$. Global L2
+miss rate $=0.02\times0.4=0.8\%$.
+\end{solution}
+
+% =============================================================================
+\subsection{Virtual Memory}
+
+\begin{exercise}[Address translation]
+32-bit VA, 4~KiB pages; page table: VPN \texttt{00400} $\to$ PFN \texttt{0A1};
+\texttt{00401} not present; \texttt{00403} $\to$ \texttt{1F2}. Translate
+\texttt{0x00403A7C}, \texttt{0x00400008}, \texttt{0x00401010}.
+\end{exercise}
+\begin{solution}
+The low 3 hex digits are the offset. \texttt{0x00403A7C} $\to$ \texttt{0x1F2A7C};
+\texttt{0x00400008} $\to$ \texttt{0x0A1008}; \texttt{0x00401010}: page not present,
+page fault.
+\end{solution}
+
+\begin{exercise}[Page table size]
+(a) 32-bit VA, 4~KiB pages, 4-byte PTEs: flat table size per process? (b) Two levels
+($10+10+12$): a process uses 8~MiB at the bottom and 1~MiB of stack at the top; how
+much memory do its tables take? (c) 48-bit VA, 4~KiB pages, 8-byte PTEs: how many
+levels if each fits in a page?
+\end{exercise}
+\begin{solution}
+(a) $2^{20}\times4$~B $=4$~MiB. (b) Each second-level table maps 4~MiB: 2 for the code
+and data, 1 for the stack, plus the root: $4\times4$~KiB $=16$~KiB. (c) VPN $=36$ bits;
+a page holds $2^9$ PTEs, so $\lceil36/9\rceil=4$ levels.
+\end{solution}
+
+\begin{exercise}[TLB and page faults]
+TLB 10~ns, memory 100~ns, TLB hit rate 95\%, two-level page table. (a) Effective
+access time? (b) Add page faults on $10^{-6}$ of accesses costing 8~ms. (c) Which are
+possible: TLB hit with page fault; TLB miss, page present, data in cache; TLB miss,
+page fault, data in cache?
+\end{exercise}
+\begin{solution}
+(a) $0.95\times110+0.05\times(10+3\times100)=104.5+15.5=120$~ns. (b)
+$+10^{-6}\times8\times10^6=8$~ns: 128~ns. (c) Impossible; possible; impossible.
+\end{solution}
+
+\begin{exercise}[OPT and Clock]
+3 frames, references \texttt{1 2 1 1 3 2 1 4 3 1 1 2 4 1 5 6 2 1}. Count the faults
+with OPT and with Clock (new pages get bit 1; the pointer moves past a newly loaded
+page).
+\end{exercise}
+\begin{solution}
+OPT: faults at 1, 2, 3, 4 (evict 2), 2 (evict 3), 5 (evict 4), 6 (evict 5): 7 faults.
+Clock: 1, 2, 3, 4 (all bits set: clear all, evict 1), 1 (evict 2), 2 (evict 3), 5
+(evict 4), 6 (evict 1), 1 (evict 2): 9 faults. (FIFO gives 9, LRU 11.)
+\end{solution}
+
+% =============================================================================
+\subsection{Multiprocessors}
+
+\begin{exercise}[MSI vs.\ MESI]
+Three processors, block $X$ in no cache. Give the states (P1 P2 P3) and bus actions
+under MSI and MESI for: P1 reads; P2 reads; P1 writes; P3 reads; P2 writes; P1 reads.
+Then P1 reads block $Y$ (cached nowhere) and writes it: how many bus transactions?
+\end{exercise}
+\begin{solution}
+MSI: S I I (BusRd); S S I (BusRd); M I I (invalidate); S I S (BusRd, P1 writes back);
+I M I (write miss); S S I (BusRd, P2 writes back). MESI is the same except the first
+step gives E I I and the second changes P1 from E to S. For $Y$: MSI needs BusRd then an
+invalidate (2 transactions); MESI loads $Y$ in E and upgrades to M silently (1).
+\end{solution}
+
+\begin{exercise}[Dependences and issue policies]
+\texttt{I1: div r1,r2,r3}; \texttt{I2: add r4,r1,r5}; \texttt{I3: sub r5,r6,r7};
+\texttt{I4: mul r4,r6,r8}; \texttt{I5: and r9,r5,r4}. List the dependences; say which
+hazards matter with in-order issue and out-of-order completion, and with out-of-order
+issue; rename to keep only true dependences.
+\end{exercise}
+\begin{solution}
+RAW: I1$\to$I2 (r1), I3$\to$I5 (r5), I4$\to$I5 (r4). WAR: I2$\to$I3 (r5). WAW:
+I2$\to$I4 (r4). Out-of-order completion: WAW (I4 finishing before I2). Out-of-order
+issue: also WAR (I3 writing r5 before I2 reads it). Renamed: \texttt{I3: sub p5,r6,r7};
+\texttt{I4: mul p4,r6,r8}; \texttt{I5: and r9,p5,p4}.
+\end{solution}
+
+\begin{exercise}[VLIW]
+A 2-slot VLIW (one memory, one ALU slot); a load's result is usable 2 cycles after
+issue, an ALU result 1 cycle after. Schedule \texttt{lw r1,0(r10)};
+\texttt{lw r2,4(r10)}; \texttt{add r3,r1,r2}; \texttt{sw r3,8(r10)};
+\texttt{addi r10,r10,12}.
+\end{exercise}
+\begin{solution}
+Words: [\texttt{lw r1} | nop], [\texttt{lw r2} | nop], [nop | nop], [nop |
+\texttt{add}], [\texttt{sw} | \texttt{addi}]: 5 words, 5 \texttt{nop}s (50\% of
+slots). \texttt{sw} reads the old \texttt{r10} in the same word as \texttt{addi}.
+\end{solution}
+
+\begin{exercise}[Barrier reuse]
+Why can the simple counter barrier deadlock when used in a loop, and how does sense
+reversal fix it?
+\end{exercise}
+\begin{solution}
+A fast thread leaves, reaches the barrier again and resets \texttt{release} before a
+slow thread has seen it; the slow thread spins forever and the count never reaches
+the total. With sense reversal each episode waits for the opposite value of
+\texttt{release}, so a new episode never undoes the previous release.
+\end{solution}
+

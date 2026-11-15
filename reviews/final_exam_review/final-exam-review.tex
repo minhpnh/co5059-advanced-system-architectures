@@ -1,0 +1,47 @@
+% !TeX program = xelatex
+\documentclass[11pt]{article}
+\newcommand{\notesdir}{../../lecture-notes}
+\input{../../lecture-notes/preamble}
+
+\begin{document}
+\sloppy
+\makecover{Final Exam Review}
+
+\section*{Exam scope}
+\addcontentsline{toc}{section}{Exam scope}
+One section per topic in the final exam scope. Each section recaps what to know,
+lists the usual traps, works through the lecturer's review questions, then gives
+new exam-style questions with full solutions. The scope below is from the
+lecturer's review slides; two A4 sheets of notes are allowed.
+\begin{center}
+\small
+\begin{tabular}{@{}p{3.2cm}p{9.2cm}l@{}}
+\toprule
+Topic & What is examined & Section \\
+\midrule
+Introduction & performance: time, throughput, instruction types, CPI; Amdahl's Law & \ref{sec:intro} \\
+Instruction set principles & all & \ref{sec:isa} \\
+Pipelining & all & \ref{sec:pipe} \\
+Cache & organization (fully associative, set associative, direct mapped);
+replacement (LRU, Clock, Tree-LRU, FIFO); write policy (write-through, write-back,
+write allocate, no-write allocate); the three categories of misses; performance
+(AMAT, hit rate, miss rate, multilevel caches) & \ref{sec:cache} \\
+Virtual memory & address translation, page table, TLB; paging, segmentation;
+replacement & \ref{sec:vm} \\
+Multiprocessors & Flynn classification, UMA, NUMA; synchronization (spin lock,
+barrier); superpipelining, superscalar, multithreading; data dependences, in-order
+and out-of-order issue and completion, VLIW; cache coherence (directory-based,
+snoopy, MSI, MESI) & \ref{sec:mp} \\
+\bottomrule
+\end{tabular}
+\end{center}
+\clearpage
+
+\input{sections/01-introduction}
+\input{sections/02-instruction-set}
+\input{sections/03-pipelining}
+\input{sections/04-cache}
+\input{sections/05-virtual-memory}
+\input{sections/06-multiprocessors}
+
+\end{document}

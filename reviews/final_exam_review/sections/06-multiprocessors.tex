@@ -1,0 +1,410 @@
+% ============================================================================
+\section{Multiprocessors and Instruction-Level Parallelism}
+\label{sec:mp}
+
+Flynn's classification, UMA and NUMA, superpipelining, superscalar and VLIW
+processors, dependences and issue/completion order, multithreading, cache coherence
+(snoopy and directory protocols, MSI, MESI) and synchronization (spin locks,
+barriers).
+
+\begin{remark}
+The course slides for this part are not in this repository; this section follows
+H\&P (Ch.~3 and~5) and the topic list in the lecturer's review slides. Check terms
+against the lecture slides.
+\end{remark}
+
+% ----------------------------------------------------------------------------
+\subsection{What to know}
+
+\subsubsection{Classifying parallel machines}
+\begin{center}
+\small
+\begin{tabular}{@{}lp{11.2cm}@{}}
+\toprule
+\multicolumn{2}{@{}l}{\textbf{Flynn's classification} (instruction streams $\times$ data streams)} \\
+\midrule
+SISD & one instruction stream, one data stream: a uniprocessor (may still be pipelined or superscalar). \\
+SIMD & one instruction applied to many data: vector processors, multimedia extensions (SSE, AVX), GPUs. \\
+MISD & several instruction streams on one data stream: \textbf{no commercial machine}; not used in practice. \\
+MIMD & independent processors on their own data: multicores, multiprocessors, clusters. The most general and common. \\
+\bottomrule
+\end{tabular}
+\end{center}
+\begin{itemize}[leftmargin=*]
+  \item \textbf{UMA} (uniform memory access), also \textbf{SMP} or centralized
+  shared memory: all processors share one memory with the same access time; simple,
+  but the bus/memory limits scaling (a few dozen cores).
+  \item \textbf{NUMA} (non-uniform memory access), also distributed shared memory
+  (DSM): memory is distributed among the nodes but still one address space; local
+  accesses are faster than remote ones; scales further. Average access time
+  $=f_{local}\,t_{local}+(1-f_{local})\,t_{remote}$.
+  \item \textbf{Message passing} (clusters, multicomputers): private memories,
+  explicit send/receive.
+\end{itemize}
+
+\subsubsection{Instruction-level parallelism (ILP)}
+\begin{itemize}[leftmargin=*]
+  \item \textbf{Superpipelining}: split stages into more, shorter stages, giving a
+  higher clock rate. Costs: larger branch and load-use penalties (in cycles), more
+  latch overhead.
+  \item \textbf{Superscalar}: issue several instructions per cycle (ideal
+  $\CPI=1/n$, $\text{IPC}=n$); hardware checks dependences dynamically, statically
+  scheduled (in order) or dynamically scheduled (out of order); binary compatible.
+  \item \textbf{VLIW}: the \emph{compiler} packs independent operations into one
+  long instruction with a fixed slot per functional unit; no dynamic hazard
+  detection, so simpler hardware. Drawbacks: \texttt{nop}s in unused slots increase
+  \textbf{code size}; latencies are built into the code, so binaries are not
+  compatible across generations; cache misses stall the whole bundle. (EPIC/IA-64 is
+  a VLIW variant.)
+\end{itemize}
+
+\subsubsection{Dependences and issue order}
+\begin{itemize}[leftmargin=*]
+  \item \textbf{Data (true) dependence}: $j$ uses a result of $i$ (RAW hazard).
+  \textbf{Name dependences}: \emph{anti-dependence} ($j$ writes a register $i$ reads:
+  WAR) and \emph{output dependence} (both write it: WAW); no value flows, only the
+  register name is shared. \textbf{Control dependence}: on a branch outcome.
+  \item \textbf{Register renaming} (Tomasulo's reservation stations, or physical
+  register files) gives each new value a fresh register and \textbf{removes WAR and
+  WAW}; RAW must still be respected.
+\end{itemize}
+\begin{center}
+\small
+\begin{tabular}{@{}p{4.4cm}p{9.8cm}@{}}
+\toprule
+Policy & Hazards to check \\
+\midrule
+In-order issue, in-order completion & RAW only (like the 5-stage pipeline); a slow instruction blocks all behind it. \\
+In-order issue, out-of-order completion & RAW and \textbf{WAW} (a later, shorter instruction can write first). Precise exceptions become hard. \\
+Out-of-order issue, out-of-order completion & RAW, WAW and \textbf{WAR} (a later instruction may write before an earlier one reads). Needs an instruction window, renaming, and a reorder buffer for in-order \emph{commit} (precise exceptions, speculation). \\
+\bottomrule
+\end{tabular}
+\end{center}
+Scoreboarding issues out of order and stalls on WAR/WAW; Tomasulo's algorithm renames
+registers to remove them; hardware speculation adds a reorder buffer.
+
+\subsubsection{Multithreading}
+Several threads share one core; each has its own PC and registers.
+\begin{itemize}[leftmargin=*]
+  \item \textbf{Fine-grained}: switch threads every cycle (round robin), skipping
+  stalled threads; hides short and long stalls but slows each single thread.
+  \item \textbf{Coarse-grained}: switch only on long stalls (L2 miss); little impact
+  on one thread, but the pipeline must refill on a switch, so short stalls are not
+  hidden.
+  \item \textbf{Simultaneous multithreading (SMT)}: on a superscalar out-of-order
+  core, issue instructions \emph{from several threads in the same cycle}, exploiting
+  \textbf{both thread-level and instruction-level parallelism} (Intel
+  Hyper-Threading).
+\end{itemize}
+
+\subsubsection{Cache coherence}
+\begin{itemize}[leftmargin=*]
+  \item With private caches, two processors can hold different values for one
+  address. A system is \textbf{coherent} if a read returns the last value written
+  (writes to one location are seen in the same order by all processors).
+  Consistency is about the order of accesses to \emph{different} locations.
+  \item \textbf{Snoopy protocols}: every cache watches (snoops) a shared bus;
+  broadcast; good for small UMA machines. \textbf{Write-invalidate} (the usual):
+  a writer first invalidates the other copies. \textbf{Write-update}: broadcast the new
+  value.
+  \item \textbf{Directory protocols}: a directory (at each block's home node) records
+  the block's state and which caches share it (a bit vector); requests go point to
+  point to the home, which sends invalidations only to the sharers. Scales to NUMA.
+  Directory states: uncached, shared, exclusive/modified.
+  \item Coherence misses (the fourth C): \emph{true sharing} (the word is really
+  communicated) and \emph{false sharing} (different words in the same block).
+\end{itemize}
+
+\begin{center}
+\small
+\begin{tabular}{@{}p{2.6cm}p{11.6cm}@{}}
+\toprule
+State & Meaning \\
+\midrule
+M (Modified) & the only copy, dirty (memory is stale); must supply data and write back. \\
+E (Exclusive) & MESI only: the only copy, clean (same as memory). \\
+S (Shared) & clean, possibly in other caches. \\
+I (Invalid) & not present / not valid. \\
+\bottomrule
+\end{tabular}
+\end{center}
+\begin{center}
+\small
+\begin{tabular}{@{}lll@{}}
+\toprule
+Event & MSI & MESI \\
+\midrule
+Read miss & BusRd $\to$ S & BusRd $\to$ E if no other copy, else S \\
+Write miss & BusRdX $\to$ M & BusRdX $\to$ M \\
+Write hit in S & BusUpgr (invalidate) $\to$ M & BusUpgr $\to$ M \\
+Write hit in E & -- & \textbf{silent} E $\to$ M (no bus transaction) \\
+Snoop BusRd, in M & flush (write back, supply data) $\to$ S & flush $\to$ S \\
+Snoop BusRd, in E & -- & $\to$ S \\
+Snoop BusRdX/BusUpgr & M: flush $\to$ I; S $\to$ I & M: flush $\to$ I; E, S $\to$ I \\
+Evict & M: write back; S: silent & M: write back; E, S: silent \\
+\bottomrule
+\end{tabular}
+\end{center}
+The \textbf{E state} lets a processor that read a private line write it later without
+a bus transaction: the common case for single-threaded code and private data.
+
+\subsubsection{Synchronization}
+\begin{itemize}[leftmargin=*]
+  \item Built on an \textbf{atomic read-modify-write}: test-and-set, atomic exchange,
+  fetch-and-increment, or the \texttt{ll}/\texttt{sc} pair (Section~\ref{sec:isa}).
+  \item \textbf{Spin lock}: a processor loops until it acquires the lock. Spin on a
+  \emph{cached copy} (plain loads, ``test-and-test-and-set'') and attempt the atomic
+  operation only when the lock looks free; this keeps the spinning off the bus. With
+  \texttt{ll}/\texttt{sc}:
+\begin{lstlisting}
+lockit: ll   $t0, 0($s0)       # read lock
+        bne  $t0, $zero, lockit # spin while it is held (1)
+        addi $t0, $zero, 1
+        sc   $t0, 0($s0)       # try to set it to 1
+        beq  $t0, $zero, lockit # sc failed: retry
+        ...                     # critical section
+        sw   $zero, 0($s0)     # release
+\end{lstlisting}
+  \item \textbf{Barrier}: no thread continues until all $n$ have arrived. Simple
+  version: a lock-protected counter; the last arrival resets the counter and sets
+  \texttt{release}; the others spin on \texttt{release}. Reusing it in a loop can
+  deadlock (a fast thread re-enters before the slow ones have seen
+  \texttt{release}); the fix is a \textbf{sense-reversing barrier}: each thread
+  flips a private \texttt{local\_sense}, and the last arrival sets
+  \texttt{release = local\_sense}.
+\end{itemize}
+
+% ----------------------------------------------------------------------------
+\subsection{Common traps}
+\begin{enumerate}[leftmargin=*]
+  \item MISD is the class with no practical machines; SIMD is widely used (vectors,
+  GPUs).
+  \item Renaming removes WAR and WAW, never RAW.
+  \item WAW appears with out-of-order \emph{completion}; WAR needs out-of-order
+  \emph{issue} (or reads after later writes).
+  \item VLIW: the compiler, not the hardware, finds the parallelism.
+  \item SMT issues from several threads in the \emph{same} cycle; fine-grained
+  switches every cycle but issues from one thread per cycle.
+  \item MESI E $\to$ M needs no bus transaction; S $\to$ M does.
+  \item A read snoop on an M line forces a write-back (flush).
+\end{enumerate}
+
+% ----------------------------------------------------------------------------
+\subsection{Lecturer's review questions}
+
+\begin{exercise}[Lecturer 1]
+In the MESI protocol, what is the principal purpose of the E state?
+(a) to avoid a second bus transaction when a single-threaded program writes a line
+it previously read; (b) to identify the core responsible for responding to BusRd
+requests from other cores; (c) to avoid the need for write-back when evicting an
+exclusive line whose value is still correct in memory; (d) to help identify the
+oldest line in a set when a victim must be chosen.
+\end{exercise}
+\begin{solution}
+\textbf{(a)}. A read with no other sharers loads the line in E; a later write changes
+E $\to$ M silently. With MSI the line would be in S, and the write would need a
+BusUpgr. (c) is also true of S lines, so it is not what E adds.
+\end{solution}
+
+\begin{exercise}[Lecturer 2]
+Register renaming helps to eliminate: (a) control hazards; (b) structural hazards;
+(c) RAW and WAR data hazards; (d) WAR and WAW data hazards.
+\end{exercise}
+\begin{solution}
+\textbf{(d)}: renaming removes name dependences. RAW is a true dependence; the
+value must still be produced before it is used.
+\end{solution}
+
+\begin{exercise}[Lecturer 4]
+The main feature of simultaneous multithreading is that it exploits both:
+(a) thread-level and instruction-level parallelism; (b) coarse-grained multithreading
+and speculation; (c) fine-grained multithreading and multilevel cache hierarchies;
+(d) all of the above.
+\end{exercise}
+\begin{solution}
+\textbf{(a)}: several threads (TLP) issue in the same cycle to a wide out-of-order
+core (ILP).
+\end{solution}
+
+\begin{exercise}[Lecturer 5]
+In Flynn's classification, which model is not much used in practice?
+(a) SISD; (b) SIMD; (c) MIMD; (d) MISD.
+\end{exercise}
+\begin{solution}
+\textbf{(d)} MISD.
+\end{solution}
+
+\begin{exercise}[Lecturer 6]
+A VLIW machine: (a) relies on the compiler to schedule all instructions;
+(b) dynamically detects hazards to reduce their delay penalty; (c) improves binary
+compatibility between generations of the architecture; (d) improves code size.
+\end{exercise}
+\begin{solution}
+\textbf{(a)}. (b) describes superscalar out-of-order hardware; (c) and (d) are VLIW's
+weaknesses (latencies fixed in the code, \texttt{nop}-filled slots).
+\end{solution}
+
+% ----------------------------------------------------------------------------
+\subsection{Exam-style questions}
+Solutions are in Section~\ref{sec:mp-sol}.
+
+\begin{exercise}[MSI vs.\ MESI trace]\label{q:mp-mesi}
+Three processors with private write-back caches share a snoopy bus. Block $X$ is
+initially in no cache. For each access give the state of $X$ in P1, P2, P3 and the bus
+action, under MSI and under MESI:
+\begin{center}
+P1 reads $X$; P2 reads $X$; P1 writes $X$; P3 reads $X$; P2 writes $X$; P1 reads $X$.
+\end{center}
+Then P1 reads block $Y$ (cached nowhere) and writes it. Count the bus transactions for
+$Y$ under each protocol.
+\end{exercise}
+
+\begin{exercise}[Dependences and issue policies]\label{q:mp-dep}
+\leavevmode
+\begin{lstlisting}
+I1: div  r1, r2, r3     # long latency
+I2: add  r4, r1, r5
+I3: sub  r5, r6, r7
+I4: mul  r4, r6, r8
+I5: and  r9, r5, r4
+\end{lstlisting}
+\begin{enumerate}[label=(\alph*),leftmargin=*]
+  \item List all true, anti and output dependences.
+  \item With in-order issue and in-order completion, what happens while I1 executes?
+  \item With in-order issue and out-of-order completion, which new hazard must be
+  checked? Give the instruction pair.
+  \item With out-of-order issue, which hazards appear if I3 or I4 runs before I2?
+  \item Rename the registers so only true dependences remain.
+\end{enumerate}
+\end{exercise}
+
+\begin{exercise}[VLIW scheduling]\label{q:mp-vliw}
+A 2-slot VLIW has one memory slot and one ALU slot per instruction word. A load's
+result can be used 2 cycles after it issues; an ALU result 1 cycle after. Registers
+are read before they are written within one word. Schedule
+\begin{lstlisting}
+lw   r1, 0(r10)
+lw   r2, 4(r10)
+add  r3, r1, r2
+sw   r3, 8(r10)
+addi r10, r10, 12
+\end{lstlisting}
+in as few words as possible. How many words and \texttt{nop}s are there? What would a
+superscalar processor do differently?
+\end{exercise}
+
+\begin{exercise}[Spin locks and barriers]\label{q:mp-sync}
+\leavevmode
+\begin{enumerate}[label=(\alph*),leftmargin=*]
+  \item In the \texttt{ll}/\texttt{sc} spin lock above, why spin on the value with
+  \texttt{bne} (line (1)) before trying \texttt{sc}? What would happen on the bus if
+  every processor executed an atomic exchange in a tight loop?
+  \item Explain why the simple counter barrier can fail when used twice in a loop,
+  and how sense reversal fixes it.
+\end{enumerate}
+\end{exercise}
+
+\begin{exercise}[UMA, NUMA and multithreading]\label{q:mp-misc}
+\leavevmode
+\begin{enumerate}[label=(\alph*),leftmargin=*]
+  \item On a NUMA machine a local access takes 20~ns and a remote one 100~ns. Find
+  the average access time if 80\% of accesses are local, and if only 50\% are.
+  \item A core runs two threads; thread A stalls on long cache misses, thread B has
+  many short 1-cycle dependence stalls. Which multithreading style hides each kind of
+  stall?
+  \item Why does superpipelining raise the branch penalty in cycles?
+\end{enumerate}
+\end{exercise}
+
+% ----------------------------------------------------------------------------
+\subsection{Solutions}
+\label{sec:mp-sol}
+
+\begin{noot}{Exercise~\ref{q:mp-mesi}}
+States are listed as P1 P2 P3.
+\begin{center}
+\small
+\begin{tabular}{@{}lllll@{}}
+\toprule
+Access & MSI states & MSI bus & MESI states & MESI bus \\
+\midrule
+P1 rd $X$ & S I I & BusRd & \textbf{E} I I & BusRd \\
+P2 rd $X$ & S S I & BusRd & S S I & BusRd (P1 E $\to$ S) \\
+P1 wr $X$ & M I I & BusUpgr & M I I & BusUpgr \\
+P3 rd $X$ & S I S & BusRd, P1 flushes & S I S & BusRd, P1 flushes \\
+P2 wr $X$ & I M I & BusRdX & I M I & BusRdX \\
+P1 rd $X$ & S S I & BusRd, P2 flushes & S S I & BusRd, P2 flushes \\
+\bottomrule
+\end{tabular}
+\end{center}
+Both use 6 bus transactions for $X$ (with 2 write-backs). For $Y$: MSI uses BusRd
+(S) then BusUpgr (M), 2 transactions; MESI uses BusRd (E) then a silent E $\to$ M,
+1 transaction. This is the purpose of E.
+\end{noot}
+
+\begin{noot}{Exercise~\ref{q:mp-dep}}
+\begin{enumerate}[label=(\alph*),leftmargin=*]
+  \item True (RAW): I1$\to$I2 (r1), I3$\to$I5 (r5), I4$\to$I5 (r4). Anti (WAR):
+  I2$\to$I3 (r5: I2 reads, I3 writes). Output (WAW): I2$\to$I4 (r4).
+  \item I2 waits for r1, and because issue is in order, I3--I5 wait behind it even
+  though I3 and I4 are independent of I1.
+  \item WAW between I2 and I4: if I4 (\texttt{mul}) completes before I2, I2's later
+  write would leave the wrong value in r4 for I5.
+  \item I3 before I2: WAR, I3 overwrites r5 before I2 reads it. I4 before I2: WAW on
+  r4.
+  \item \texttt{I3: sub p5,r6,r7}; \texttt{I4: mul p4,r6,r8};
+  \texttt{I5: and r9,p5,p4}. Now I3 and I4 can run at once during the \texttt{div};
+  only I1$\to$I2 and I3, I4$\to$I5 remain.
+\end{enumerate}
+\end{noot}
+
+\begin{noot}{Exercise~\ref{q:mp-vliw}}
+\begin{center}
+\small
+\begin{tabular}{@{}lll@{}}
+\toprule
+Word & Memory slot & ALU slot \\
+\midrule
+1 & \texttt{lw r1,0(r10)} & \texttt{nop} \\
+2 & \texttt{lw r2,4(r10)} & \texttt{nop} \\
+3 & \texttt{nop} & \texttt{nop} \\
+4 & \texttt{nop} & \texttt{add r3,r1,r2} \\
+5 & \texttt{sw r3,8(r10)} & \texttt{addi r10,r10,12} \\
+\bottomrule
+\end{tabular}
+\end{center}
+5 words, 5 \texttt{nop}s (50\% of the slots). \texttt{r2} is ready in word 4, so
+\texttt{add} cannot go earlier; \texttt{addi} shares word 5 with \texttt{sw} because
+\texttt{sw} reads the old \texttt{r10}. A superscalar would find the same
+parallelism at run time in hardware, with no \texttt{nop}s stored in the code, and the
+same binary would still run on a wider or differently timed implementation.
+\end{noot}
+
+\begin{noot}{Exercise~\ref{q:mp-sync}}
+\begin{enumerate}[label=(\alph*),leftmargin=*]
+  \item While the lock is held, \texttt{ll}/\texttt{bne} just reads the cached copy
+  (state S), so spinning causes no bus traffic. Only when the owner releases the lock
+  (an invalidation) do the waiters miss, see 0 and try \texttt{sc}. A tight loop of
+  atomic exchanges writes on every attempt, so the block ping-pongs between caches in
+  M state with an invalidation on each try, flooding the bus and slowing the owner.
+  \item The last thread resets the counter and sets \texttt{release=1}. A fast
+  thread may leave and reach the barrier again, resetting \texttt{release=0} before a
+  slow thread has seen the 1; the slow thread spins forever, and the fast threads
+  wait for it: deadlock. With sense reversal each episode waits for the opposite
+  value of \texttt{release}, so the next episode never undoes the previous release.
+\end{enumerate}
+\end{noot}
+
+\begin{noot}{Exercise~\ref{q:mp-misc}}
+\begin{enumerate}[label=(\alph*),leftmargin=*]
+  \item $0.8\times20+0.2\times100=36$~ns; $0.5\times20+0.5\times100=60$~ns. Data
+  placement matters on NUMA.
+  \item Thread A's long misses: coarse-grained switching (or any style). Thread B's
+  short stalls: only fine-grained or SMT, since coarse-grained switching costs a
+  pipeline refill that is longer than the stall.
+  \item The branch is resolved in a stage further from IF, so more stages (cycles)
+  of wrongly fetched instructions must be flushed, even though each cycle is
+  shorter.
+\end{enumerate}
+\end{noot}
+

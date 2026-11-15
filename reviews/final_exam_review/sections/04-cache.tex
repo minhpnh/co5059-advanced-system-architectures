@@ -1,0 +1,351 @@
+% ============================================================================
+\section{Cache}
+\label{sec:cache}
+
+Cache organization, block replacement (LRU, FIFO, Tree-LRU, Clock), write
+policies, the three categories of misses, and cache performance (AMAT, hit and miss
+rates, multilevel caches).
+
+% ----------------------------------------------------------------------------
+\subsection{What to know}
+
+\subsubsection{Basics}
+\begin{itemize}[leftmargin=*]
+  \item Memory hierarchy: each level is larger, slower and cheaper per byte than
+  the one above. It works because of \textbf{locality}: \emph{temporal} (an item
+  used now is used again soon) and \emph{spatial} (nearby items are used soon, so
+  whole blocks are moved).
+  \item \textbf{Hit}: the data is in the cache. \textbf{Hit time}: time to access
+  the cache, including deciding hit or miss. \textbf{Miss penalty}: time to bring
+  the block from the lower level. Hit rate $+$ miss rate $=1$.
+  \item The four questions: \emph{placement} (where can a block go),
+  \emph{identification} (how is it found: tag $+$ valid bit), \emph{replacement}
+  (which block is evicted), \emph{write strategy}.
+\end{itemize}
+
+\subsubsection{Organization and address breakdown}
+$C$ = cache size, $B$ = block size, $a$ = associativity (ways), $A$ = address bits.
+\[
+  \#\text{blocks}=\frac CB,\qquad \#\text{sets } S=\frac{C}{B\times a},
+\]
+\[
+  \text{offset}=\log_2B,\quad \text{index}=\log_2S,\quad \text{tag}=A-\text{index}-\text{offset}.
+\]
+\begin{center}
+\small
+\begin{tabular}{@{}lll@{}}
+\toprule
+Organization & Where a block can go & Index bits \\
+\midrule
+Direct mapped ($a=1$) & exactly one block: (block address) mod (\#blocks) & $\log_2(C/B)$ \\
+$n$-way set associative & any of the $n$ ways of set (block address) mod $S$ & $\log_2(C/(Bn))$ \\
+Fully associative ($S=1$) & anywhere; compare all tags & 0 \\
+\bottomrule
+\end{tabular}
+\end{center}
+\begin{itemize}[leftmargin=*]
+  \item Block address $=\lfloor\text{addr}/B\rfloor$; set $=$ block address mod $S$;
+  tag $=\lfloor\text{block address}/S\rfloor$.
+  \item Doubling associativity (same $C$, $B$): index $-1$ bit, tag $+1$ bit.
+  \item Storage per block $=8B$ data bits $+$ tag $+$ valid ($+$ dirty for write-back)
+  ($+$ replacement bits).
+\end{itemize}
+
+\subsubsection{Block replacement}
+Only needed when $a>1$ (direct mapped has no choice).
+\begin{itemize}[leftmargin=*]
+  \item \textbf{Random}: pseudo-random way; simple, no state.
+  \item \textbf{LRU}: evict the block unused for the longest time. Exact LRU
+  keeps the full use order of the set ($\lceil\log_2 n!\rceil$ bits, e.g.\ 5 bits
+  for 4 ways), which is costly for large $n$.
+  \item \textbf{FIFO}: evict the block loaded earliest; hits do not change the
+  order.
+  \item \textbf{Tree-LRU} (tree pseudo-LRU): $n-1$ bits in a binary tree over the
+  ways (3 bits for 4 ways: root $b_0$ chooses a pair, $b_1$ the way in pair
+  $\{0,1\}$, $b_2$ the way in pair $\{2,3\}$). On every access, set the bits on the
+  path to point \emph{away} from the accessed way. Victim: follow the bits from the
+  root. It approximates LRU and can evict a block that true LRU would keep.
+  \item \textbf{Clock} (second chance): ways in a circle, one reference bit each and a
+  pointer. On an access set the bit to 1. To replace: if the pointed block has bit 1,
+  clear it and advance; evict the first block with bit 0. The new block gets bit 1
+  and the pointer moves past it.
+\end{itemize}
+
+\subsubsection{Write policies}
+\begin{center}
+\small
+\begin{tabular}{@{}p{2.6cm}p{11.6cm}@{}}
+\toprule
+Write-through & on a write hit, update the cache \emph{and} the next level; no dirty
+bit; a write buffer hides the stalls; memory is always up to date. \\
+Write-back & update only the cache; a \textbf{dirty bit} marks modified blocks, which
+are written to memory only when evicted; less memory traffic. \\
+\midrule
+Write allocate & on a write miss, fetch the block into the cache, then write it. \\
+No-write allocate & on a write miss, write only to the next level; the cache is not
+changed. \\
+\bottomrule
+\end{tabular}
+\end{center}
+Usual pairs: write-through $+$ no-write allocate; write-back $+$ write allocate.
+
+\subsubsection{The three categories of misses (3 Cs)}
+\begin{itemize}[leftmargin=*]
+  \item \textbf{Compulsory} (cold start): the first access to a block.
+  \item \textbf{Capacity}: the cache cannot hold all the blocks the program needs;
+  the miss also happens in a fully associative LRU cache of the same size.
+  \item \textbf{Conflict} (collision): too many blocks map to the same set; the
+  access would hit in a fully associative cache of the same size.
+  \item (A fourth C, \textbf{coherence}, appears in multiprocessors.)
+\end{itemize}
+\begin{center}
+\small
+\begin{tabular}{@{}p{4.2cm}p{4.6cm}p{5.4cm}@{}}
+\toprule
+Basic optimization & Reduces & Cost \\
+\midrule
+Larger block size & compulsory misses (spatial locality) & larger miss penalty; more conflict/capacity misses if too large \\
+Larger cache & capacity misses & longer hit time, cost, power \\
+Higher associativity & conflict misses & longer hit time \\
+Multilevel caches & miss penalty & more hardware \\
+Read misses before writes & miss penalty & check the write buffer \\
+Avoid translation in indexing & hit time & needs VIPT, $C/a\le$ page size \\
+\bottomrule
+\end{tabular}
+\end{center}
+Rule of thumb: a direct-mapped cache of size $N$ misses about as often as a 2-way
+cache of size $N/2$.
+
+\subsubsection{Cache performance}
+\[
+  \text{AMAT}=\text{Hit time}+\text{Miss rate}\times\text{Miss penalty}
+\]
+\[
+  \CPI=\CPI_{exec}+\frac{\text{memory accesses}}{\text{instruction}}\times\text{Miss rate}\times\text{Miss penalty},
+  \qquad T=I\times\CPI\times C.
+\]
+Accesses per instruction $=1$ (fetch) $+$ fraction of loads/stores. Miss penalty
+in \emph{cycles} $=$ penalty in ns / clock period.
+
+\textbf{Multilevel caches} (L2 reduces the L1 \emph{miss penalty}):
+\[
+  \text{AMAT}=\text{HT}_{L1}+\text{MR}_{L1}\times\big(\text{HT}_{L2}+\text{MR}_{L2}\times\text{MP}_{L2}\big)
+\]
+\begin{itemize}[leftmargin=*]
+  \item \textbf{Local} miss rate $=$ misses in this cache / accesses \emph{to this
+  cache} (for L2: accesses $=$ L1 misses). \textbf{Global} miss rate $=$ misses in
+  this cache / all CPU accesses $=\text{MR}_{L1}\times\text{MR}_{L2,local}$.
+  \item Stalls per instruction $=\dfrac{\text{L1 misses}}{\text{instr}}\times
+  \text{HT}_{L2}+\dfrac{\text{L2 misses}}{\text{instr}}\times\text{MP}_{L2}$.
+\end{itemize}
+
+% ----------------------------------------------------------------------------
+\subsection{Common traps}
+\begin{enumerate}[leftmargin=*]
+  \item Sets $=C/(B\times a)$: divide by the associativity.
+  \item Work with block addresses (addr$/B$), not byte addresses, when tracing.
+  \item L2 \emph{local} miss rate is relative to L1 misses; multiply by
+  $\text{MR}_{L1}$ for the global rate.
+  \item Count the instruction fetch in memory accesses per instruction.
+  \item Tree-LRU is not LRU: trace the bits, do not guess.
+  \item In write-back, a miss that evicts a dirty block costs a write-back as well.
+  \item A conflict miss is one that a fully associative cache of the same size
+  would \emph{not} have had.
+\end{enumerate}
+
+% ----------------------------------------------------------------------------
+\subsection{Lecturer's review questions}
+
+\begin{exercise}[Lecturer 1]
+The algorithm that removes contents and places new contents into the cache is
+called: (a) replacement algorithm; (b) renewal algorithm; (c) updation; (d) none of
+the above.
+\end{exercise}
+\begin{solution}
+\textbf{(a)}.
+\end{solution}
+
+\begin{exercise}[Lecturer 2]
+An L2 cache helps to: (a) reduce the miss rate of L1; (b) reduce the hit time of
+L1; (c) double the L1 size; (d) reduce the miss penalty of L1.
+\end{exercise}
+\begin{solution}
+\textbf{(d)}: an L1 miss is served by L2 (a few cycles) instead of memory (about
+100 cycles). L1's own miss rate and hit time do not change.
+\end{solution}
+
+\begin{exercise}[Lecturer 8--11]\label{l:cache-trace}
+A CPU has an 8~KB, 2-way set-associative data cache with 16-byte lines and 32-bit
+addresses.
+(8) Offset bits: (a) 2; (b) 4; (c) 8; (d) 16.
+(9) Index bits: (a) 2; (b) 4; (c) 8; (d) 16.
+(10) Tag bits: (a) 16; (b) 18; (c) 20; (d) 22.
+(11) After reset, how many misses for \texttt{0x00000000}, \texttt{0x00000014},
+\texttt{0x00000008}, \texttt{0x00000010}, \texttt{0x00000020}? (a) 2; (b) 3; (c) 4;
+(d) 5.
+\end{exercise}
+\begin{solution}
+(8) \textbf{(b)}: $\log_216=4$. (9) \textbf{(c)}: $S=\dfrac{8192}{16\times2}=256$,
+$\log_2256=8$. (10) \textbf{(c)}: $32-8-4=20$.
+
+(11) \textbf{(b) 3}. Block address $=$ addr$/16$:
+\begin{center}
+\small
+\begin{tabular}{@{}lccccc@{}}
+\toprule
+Address & \texttt{0x00} & \texttt{0x14} & \texttt{0x08} & \texttt{0x10} & \texttt{0x20} \\
+Block (set) & 0 & 1 & 0 & 1 & 2 \\
+Result & miss & miss & hit & hit & miss \\
+\bottomrule
+\end{tabular}
+\end{center}
+\texttt{0x08} is in the same 16-byte block as \texttt{0x00}, and \texttt{0x10} in the
+same block as \texttt{0x14} (spatial locality). All three misses are compulsory.
+\end{solution}
+
+% ----------------------------------------------------------------------------
+\subsection{Exam-style questions}
+Solutions are in Section~\ref{sec:cache-sol}.
+
+\begin{exercise}[Address breakdown]\label{q:c-addr}
+A 32~KiB cache has 64-byte blocks and 32-bit byte addresses.
+\begin{enumerate}[label=(\alph*),leftmargin=*]
+  \item Give the tag, index and offset widths if it is direct mapped, 4-way set
+  associative, and fully associative.
+  \item For the 4-way write-back version, find the total storage (data, tag, valid
+  and dirty bits).
+  \item In the 4-way cache, which set and tag does address \texttt{0x12345678} map
+  to?
+\end{enumerate}
+\end{exercise}
+
+\begin{exercise}[Replacement policies]\label{q:c-repl}
+One set of a 4-way set-associative cache, initially empty, receives these block
+references:
+\begin{center}
+\texttt{0 1 2 3 0 4 1 0 5 2 3 0}
+\end{center}
+\begin{enumerate}[label=(\alph*),leftmargin=*]
+  \item Trace LRU, FIFO, Tree-LRU and Clock. Mark hits and misses and give the
+  victim of each miss. (Fill empty ways in order 0--3. Tree-LRU bits are
+  $b_0b_1b_2$, initially 000; Clock gives new blocks bit 1.)
+  \item Count the misses of each policy. Where does Tree-LRU differ from LRU?
+  \item How many state bits per set does each policy need?
+\end{enumerate}
+\end{exercise}
+
+\begin{exercise}[The 3 Cs]\label{q:c-3c}
+A direct-mapped cache has 4 one-word blocks (index $=$ word address mod 4) and
+starts empty. Classify every access to the word addresses
+\texttt{0 4 0 1 2 3 5 0 4 1} as hit, compulsory, capacity or conflict miss.
+\end{exercise}
+
+\begin{exercise}[Write policies]\label{q:c-write}
+A direct-mapped cache of 4 one-word blocks starts empty. The CPU performs
+\texttt{W0 R0 W4 W4 R0 W8 R8 W0} (W $=$ write, R $=$ read, word addresses). For
+(a) write-through with no-write allocate and (b) write-back with write allocate,
+count the misses, the blocks read from memory and the words written to memory.
+Which blocks are dirty at the end of (b)?
+\end{exercise}
+
+\begin{exercise}[Multilevel cache]\label{q:c-amat}
+L1 hit time 1 cycle, L1 miss rate 2\%; L2 hit time 10 cycles, L2 local miss rate
+40\%; memory 100 cycles. There are 1.3 memory accesses per instruction and
+$\CPI_{exec}=1$.
+\begin{enumerate}[label=(\alph*),leftmargin=*]
+  \item Find the AMAT with and without L2, and the L2 global miss rate.
+  \item Find the CPI with and without L2 and the speedup due to L2.
+  \item Which of the 3 Cs does L2 affect? Which cache parameter does it improve?
+\end{enumerate}
+\end{exercise}
+
+% ----------------------------------------------------------------------------
+\subsection{Solutions}
+\label{sec:cache-sol}
+
+\begin{noot}{Exercise~\ref{q:c-addr}}
+\begin{enumerate}[label=(\alph*),leftmargin=*]
+  \item Offset $=\log_264=6$; $C/B=512$ blocks.
+  Direct mapped: index 9, tag $32-9-6=17$.
+  4-way: $S=128$, index 7, tag 19.
+  Fully associative: index 0, tag 26.
+  \item Per block: $512$ data $+19$ tag $+1$ valid $+1$ dirty $=533$ bits;
+  $512\times533=272{,}896$ bits $=34{,}112$ bytes (about 4\% overhead).
+  \item \texttt{0x12345678}$/64=$ \texttt{0x48D159}; set $=$ \texttt{0x48D159} mod
+  128 $=$ \texttt{0x59} $=89$; tag $=$ \texttt{0x48D159}$/128=$ \texttt{0x91A2}.
+\end{enumerate}
+\end{noot}
+
+\begin{noot}{Exercise~\ref{q:c-repl}}
+(a) M $=$ miss (victim in brackets), H $=$ hit.
+\begin{center}
+\small
+\setlength{\tabcolsep}{3pt}
+\begin{tabular}{@{}lcccccccccccc@{}}
+\toprule
+Ref & 0 & 1 & 2 & 3 & 0 & 4 & 1 & 0 & 5 & 2 & 3 & 0 \\
+\midrule
+LRU & M & M & M & M & H & M(1) & M(2) & H & M(3) & M(4) & M(1) & H \\
+FIFO & M & M & M & M & H & M(0) & H & M(1) & M(2) & M(3) & M(4) & H \\
+Tree-LRU & M & M & M & M & H & M(2) & H & H & M(3) & M(1) & M(4) & H \\
+\quad bits $b_0b_1b_2$ & 110 & 100 & 001 & 000 & 110 & 011 & 101 & 111 & 010 & 100 & 001 & 111 \\
+Clock & M & M & M & M & H & M(0) & H & M(2) & M(3) & M(1) & M(4) & H \\
+\bottomrule
+\end{tabular}
+\end{center}
+Tree-LRU detail at reference 4: the bits are 110 ($b_0=1$: victim in pair
+$\{2,3\}$; $b_2=0$: way 2), so block 2 is evicted, while true LRU evicts 1. Clock at
+reference 4: all bits are 1, so the pointer clears all four and comes back to way 0,
+evicting 0.
+
+(b) LRU 9, FIFO 9, Tree-LRU 8, Clock 9. Tree-LRU differs at reference 4 (it keeps 1,
+which is reused next) and from then on holds different blocks. Here the
+approximation happens to do better; in general it is slightly worse than LRU.
+
+(c) Exact LRU: $\lceil\log_2 4!\rceil=5$ bits (often 8: a 2-bit age per way).
+FIFO: a 2-bit pointer. Tree-LRU: 3 bits. Clock: 4 reference bits $+$ a 2-bit
+pointer. Random: none.
+\end{noot}
+
+\begin{noot}{Exercise~\ref{q:c-3c}}
+\begin{center}
+\small
+\begin{tabular}{@{}lcccccccccc@{}}
+\toprule
+Address & 0 & 4 & 0 & 1 & 2 & 3 & 5 & 0 & 4 & 1 \\
+Index & 0 & 0 & 0 & 1 & 2 & 3 & 1 & 0 & 0 & 1 \\
+Result & comp. & comp. & confl. & comp. & comp. & comp. & comp. & hit & cap. & cap. \\
+\bottomrule
+\end{tabular}
+\end{center}
+The third access (0) misses only because 4 took index 0; a 4-block fully
+associative LRU cache would still hold 0, so it is a conflict miss. The last two
+(4 and 1) also miss in the fully associative cache, which has meanwhile evicted them
+(too many distinct blocks since their last use), so they are capacity misses.
+\end{noot}
+
+\begin{noot}{Exercise~\ref{q:c-write}}
+\begin{enumerate}[label=(\alph*),leftmargin=*]
+  \item Write-through, no-write allocate: writes never fill the cache. W0 miss, R0
+  miss (fetch 0), W4 miss, W4 miss, R0 hit, W8 miss, R8 miss (fetch 8, replaces 0),
+  W0 miss. \textbf{7 misses, 2 blocks read, 5 words written} (every write goes to
+  memory).
+  \item Write-back, write allocate: W0 miss (fetch 0, dirty), R0 hit, W4 miss
+  (write back 0, fetch 4, dirty), W4 hit, R0 miss (write back 4, fetch 0, clean), W8
+  miss (0 is clean: no write-back; fetch 8, dirty), R8 hit, W0 miss (write back 8,
+  fetch 0, dirty). \textbf{5 misses, 5 blocks read, 3 words written}; block 0 is
+  dirty at the end (one more write-back when it is evicted).
+\end{enumerate}
+\end{noot}
+
+\begin{noot}{Exercise~\ref{q:c-amat}}
+\begin{enumerate}[label=(\alph*),leftmargin=*]
+  \item With L2: $1+0.02\times(10+0.4\times100)=1+0.02\times50=2$ cycles. Without:
+  $1+0.02\times100=3$ cycles. Global L2 miss rate $=0.02\times0.4=0.8\%$.
+  \item With L2: stalls $=1.3\times0.02\times50=1.3$, $\CPI=2.3$. Without:
+  $1.3\times0.02\times100=2.6$, $\CPI=3.6$. Speedup $=3.6/2.3=1.57$.
+  \item L2 does not change L1's misses (any C); it reduces the \emph{miss penalty}
+  of L1, because most L1 misses now hit in L2.
+\end{enumerate}
+\end{noot}
+

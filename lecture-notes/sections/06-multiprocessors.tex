@@ -1,0 +1,616 @@
+\section{Multiprocessors}
+\label{sec:mp}
+\sources{Group presentation ``Multi-Processor 1''
+(\nolinkurl{06-multiprocessor-part1-group.pdf}: systems, Flynn, synchronization,
+consistency, superpipelining, superscalar, multithreading); Group~4
+``Multiprocessor Part 2'' (\nolinkurl{06-multiprocessor-part2-group4.pdf}:
+dependences, issue policies, VLIW, cache coherence); H\&P 5th ed.\ \S1.2, Ch.~3
+(\S3.1--3.2, 3.4, 3.6--3.7, 3.12), Ch.~5 (\S5.1--5.6), App.~I (\S I.3).}
+
+% =============================================================================
+\subsection{Multiprocessor Systems}
+\label{sec:mp-systems}
+
+\begin{definition}[Multiprocessor]
+A \textbf{multiprocessor} is a computer with two or more processors that
+cooperate on tasks and share memory or have their own local memories. Related
+terms: \textbf{multithreading} (several threads of execution in one program or
+core), \textbf{multicore} (several processors, \emph{cores}, on one chip). The
+course focuses on shared-memory, tightly coupled MIMD
+multiprocessors.\HP{\S5.1}{344}
+\end{definition}
+
+\paragraph{Why.} Single processors hit three walls: the \textbf{power wall} (higher
+clock rates waste energy as heat), the \textbf{ILP wall} (extracting more
+instruction-level parallelism costs too much hardware for small gains) and the
+\textbf{memory wall} (DRAM did not keep up with cores). Multiprocessors give higher
+throughput within power limits and some availability (one processor can fail);
+their limits are Amdahl's law, contention for shared resources and tasks that cannot
+be parallelized.
+
+\begin{eg}[Amdahl's law limits parallel speedup]
+To reach a speedup of 80 with 100 processors: $80=\dfrac{1}{f/100+(1-f)}$ gives
+$f=0.9975$: only 0.25\% of the original computation may be
+sequential.\HP{\S5.1, Example}{349} Group~4: $f=0.90$ on 64 processors gives
+$1/(0.1+0.9/64)\approx8.8$; $f=0.99$ gives $\approx39.3$. Removing dependences
+raises $f$.
+\end{eg}
+
+\begin{eg}[The cost of communication]
+32 processors, remote memory access 200 ns, clock 3.3 GHz (0.3 ns), base $\CPI=0.5$
+with all references local; 0.2\% of instructions make a remote reference costing
+$200/0.3\approx666$ cycles. $\CPI=0.5+0.2\%\times666\approx1.7$: the all-local
+machine is $1.7/0.5=3.4\times$ faster.\HP{\S5.1, Example}{350}
+\end{eg}
+
+\subsubsection{Memory organization}
+\begin{center}
+\small
+\begin{tabular}{@{}P{3.6cm}P{5.2cm}P{5.2cm}@{}}
+\toprule
+Organization & Structure & Implication \\
+\midrule
+Centralized shared memory: \textbf{SMP}, \textbf{UMA} & all processors share one
+memory (and I/O) with the same latency & simple sharing; memory bandwidth limits
+scaling (about 8--32 cores) \\
+Distributed shared memory: \textbf{DSM}, \textbf{NUMA} & memory distributed among
+nodes, one shared address space; local accesses faster than remote & scales; remote
+latency, directory coherence \\
+Message passing (clusters) & private memories per node & explicit messages \\
+\bottomrule
+\end{tabular}
+\end{center}
+In an SMP (symmetric multiprocessor) all processors are equals and can run OS and
+application code; multicore chips are SMPs. UMA examples: a multicore SoC (Apple
+Silicon); NUMA: multi-socket database servers.\HP[348]{\S5.1, Figures~5.1--5.2}{346}
+
+\subsubsection{Flynn's classification}
+Classify by the number of \emph{instruction streams} and \emph{data streams}:
+\begin{center}
+\small
+\begin{tabular}{@{}lP{11cm}@{}}
+\toprule
+SISD & single instruction, single data: a uniprocessor (it may still be pipelined or
+superscalar) \\
+SIMD & single instruction, multiple data: one instruction on many data items; data-level
+parallelism (vector units, multimedia extensions, GPUs) \\
+MISD & multiple instruction, single data: \textbf{no commercial multiprocessor of
+this type has been built} \\
+MIMD & multiple instruction, multiple data: each processor fetches its own
+instructions and data; task-level parallelism; the most general and common \\
+\bottomrule
+\end{tabular}
+\end{center}
+\HP{\S1.2}{10}
+\begin{remark}
+\slidefix{} The Part~1 slides give pipelining as an application of MISD. A
+pipeline processes one instruction stream; H\&P states that no commercial MISD
+machine exists. The number of cores alone does not determine the Flynn class.
+\end{remark}
+
+% =============================================================================
+\subsection{Synchronization}
+\label{sec:sync}
+
+\begin{definition}[Race condition, critical section]
+A \textbf{race condition}: the result depends on the uncontrolled order in which
+threads access shared data, with at least one write and no synchronization
+(\texttt{count = count + 1} is a read, an add and a write; two threads can lose an
+update). The \textbf{critical section} is the code that accesses shared data; a
+correct protocol guarantees \textbf{mutual exclusion} (at most one thread inside),
+\textbf{progress} (if it is free and threads want in, one enters) and
+\textbf{bounded waiting} (no starvation).
+\end{definition}
+
+\paragraph{Atomic primitives.} A lock built from ordinary loads and stores has its
+own race (two threads both see the flag free). Hardware provides an atomic
+read-modify-write:\HP[388]{\S5.5}{387}
+\begin{itemize}
+  \item \textbf{Atomic exchange} (swap): swap a register and a memory word;
+  \textbf{test-and-set}: return the old value and set it to 1;
+  \textbf{fetch-and-increment}; \textbf{compare-and-swap}.
+  \item \textbf{Load linked / store conditional} (\texttt{LL}/\texttt{SC}): the
+  store succeeds (returns 1) only if the location was not written since the
+  \texttt{LL}; the pair builds any of the above (Section~\ref{sec:mips}).
+\end{itemize}
+
+\begin{definition}[Spin lock]
+A lock that a processor tries to acquire in a loop until it succeeds. Used when the
+lock is held very briefly. Simple version (\texttt{R1} $=$ lock address, 0 $=$ free):
+\begin{lstlisting}
+        DADDUI R2,R0,#1
+lockit: EXCH   R2,0(R1)    ; atomic exchange
+        BNEZ   R2,lockit   ; already locked?
+\end{lstlisting}
+Release: store 0. Each exchange is a write, so with coherent caches every attempt
+invalidates the others' copies and floods the bus. The \textbf{test-and-test-and-set}
+version spins on a cached \emph{read} and tries the exchange only when the lock
+looks free:\HP[390]{\S5.5}{389}
+\begin{lstlisting}
+lockit: LD     R2,0(R1)    ; load of lock
+        BNEZ   R2,lockit   ; not available: spin
+        DADDUI R2,R0,#1    ; load locked value
+        EXCH   R2,0(R1)    ; swap
+        BNEZ   R2,lockit   ; branch if lock wasn't 0
+\end{lstlisting}
+\end{definition}
+
+\begin{center}
+\small
+\begin{tabular}{@{}lP{5.6cm}P{5.6cm}@{}}
+\toprule
+& Spin lock & Mutex (sleeping lock) \\
+\midrule
+While waiting & loops, CPU busy & sleeps; the OS runs other work \\
+Acquire cost & immediate & context switch \\
+Best for & very short waits (microseconds) & long waits (disk, network) \\
+One core & useless (the owner cannot run) & works \\
+\bottomrule
+\end{tabular}
+\end{center}
+\begin{itemize}
+  \item \textbf{Deadlock}: threads wait for each other in a circle (needs mutual
+  exclusion, hold and wait, no preemption, circular wait); avoid it e.g.\ by taking
+  locks in one global order.
+  \item \textbf{At large scale}: test-and-test-and-set, \textbf{exponential backoff}
+  (wait 1, 2, 4, \dots{} before retrying), \textbf{queue locks} (MCS: each waiter
+  spins on its own flag; fair; Linux qspinlock).
+\end{itemize}
+
+\begin{definition}[Barrier]
+A \textbf{barrier} forces all threads to wait until every thread has arrived (e.g.\
+between program phases). Simple version: a lock-protected counter; the last arrival
+resets the counter and sets \texttt{release}; the others spin on \texttt{release}.
+Used in a loop it can deadlock: a fast thread reaches the barrier again and clears
+\texttt{release} before a slow thread has left. A \textbf{sense-reversing barrier}
+fixes this: each thread flips a private \texttt{local\_sense} and waits for
+\texttt{release == local\_sense}.\HPA[15]{I}{\S I.3, Figures~I.2--I.3}{14} Large
+machines use \textbf{tree barriers} to avoid one hot counter.
+\end{definition}
+
+% =============================================================================
+\subsection{Memory Consistency}
+\label{sec:consistency}
+
+\begin{definition}[Coherence vs.\ consistency]
+\textbf{Coherence} defines what values a read of \emph{one} location can return.
+\textbf{Consistency} defines \emph{when} a written value must be seen by reads,
+i.e.\ the allowed order of accesses to \emph{different} locations. Coherent caches
+alone do not fix that order.\HP{\S5.2}{353}
+\end{definition}
+
+\begin{definition}[Sequential consistency (SC)]
+The result of any execution is the same as if the operations of all processors were
+executed in some sequential order, and the operations of each processor appear in
+program order (Lamport). All four orderings W$\to$R, R$\to$R, R$\to$W, W$\to$W are
+kept.\HP[395]{\S5.6}{392}
+\end{definition}
+
+\begin{eg}[Store buffering]
+Initially $x=y=0$. Thread 0: \texttt{x = 1; r0 = y}. Thread 1: \texttt{y = 1; r1 = x}.
+Under SC, $r0=r1=0$ is impossible (whichever store is first in the global order is
+seen by the other thread's load). With a store buffer (relaxing W$\to$R), each store
+can wait in its buffer while the following load reads the old value, so $r0=r1=0$
+can happen. Coherence does not prevent it: it is about two different locations.
+\end{eg}
+
+\paragraph{Relaxed models.} Relaxing orderings lets hardware hide write latency;
+programs then use synchronization (fences, acquire/release) to restore order.
+\begin{center}
+\small
+\begin{tabular}{@{}lP{5.8cm}P{4.4cm}@{}}
+\toprule
+Model & Relaxes & Used in \\
+\midrule
+TSO / processor consistency & W$\to$R: a load may pass an earlier store (write buffer); stores stay in order & x86 \\
+PSO (partial store order) & W$\to$R and W$\to$W (stores to different addresses) & SPARC (PSO mode) \\
+Weak ordering & all orders between synchronization operations; syncs act as fences & ARM, PowerPC style \\
+Release consistency & as weak ordering, but distinguishes \emph{acquire} (later ops wait for it) and \emph{release} (earlier ops finish before it) & lock-based programs \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+% =============================================================================
+\subsection{Dependences and Instruction-Level Parallelism}
+\label{sec:ilp}
+
+\subsubsection{Dependences}
+\begin{definition}[Kinds of dependence]
+\begin{itemize}
+  \item \textbf{Data (true) dependence}: $j$ uses a result of $i$ (directly or through
+  a chain). The only real dependence; hazard \textbf{RAW}. Cannot be removed.
+  \item \textbf{Name dependence}: two instructions use the same register or memory
+  location without data flowing: \textbf{antidependence} ($j$ writes what $i$
+  reads, hazard \textbf{WAR}) and \textbf{output dependence} (both write, hazard
+  \textbf{WAW}). Removed by \textbf{renaming}.
+  \item \textbf{Control dependence}: whether $j$ executes depends on a branch;
+  handled by prediction and speculation.
+  \item \textbf{Resource dependence}: two operations need the same unit (structural).
+\end{itemize}
+A dependence is a property of the program; whether it becomes a hazard (a stall)
+depends on the pipeline.\HP[155]{\S3.1}{150}
+\end{definition}
+
+\begin{eg}[Renaming (Group 4)]
+\texttt{I1: R1 = R2 + R3}; \texttt{I2: R4 = R1 * 2}; \texttt{I3: R2 = R5 - 1};
+\texttt{I4: R4 = R6 + R7}. I1$\to$I2 is true (RAW on R1); I1$\to$I3 is anti (WAR on
+R2); I2$\to$I4 is output (WAW on R4). Renaming I3's R2 to P2 and I4's R4 to P4
+removes the last two; I1$\to$I2 remains.
+\end{eg}
+
+\paragraph{Finding parallelism (program level).}
+\begin{itemize}
+  \item \textbf{Bernstein's conditions} (Hwang; \beyond{} H\&P): with input set $I_i$
+  and output set $O_i$, $P_1\parallel P_2$ iff $I_1\cap O_2=\emptyset$ (no anti),
+  $I_2\cap O_1=\emptyset$ (no flow) and $O_1\cap O_2=\emptyset$ (no output).
+  $\parallel$ is not transitive.
+  \item A \textbf{dependence graph} has statements as nodes; its longest path (the
+  \emph{critical path}) is the minimum time with unlimited processors.
+  \item A \textbf{loop-carried dependence}: iteration $i$ uses a value from iteration
+  $i-d$. No carried dependence $\Rightarrow$ the loop is parallel (DOALL); carried but
+  no cycle $\Rightarrow$ restructure; a cycle $\Rightarrow$ DOACROSS
+  (post/wait synchronization) or serial.
+  \item \textbf{GCD test}: for a store to $X[a\,i+b]$ and a load from $X[c\,i+d]$, a
+  loop-carried dependence requires $\gcd(c,a)$ to divide $d-b$. Example:
+  \texttt{X[2*i+3] = X[2*i] * 5.0}: $\gcd(2,2)=2$ does not divide $-3$, so no
+  dependence.\HP{\S4.5}{319}
+  \item \textbf{Reductions} (a sum) can be regrouped as a tree: $N-1$ dependent adds
+  become $\log_2N$ steps.
+\end{itemize}
+
+\begin{eg}[Bernstein's conditions (Group 4, after Hwang)]
+P1: $C=D\times E$; P2: $M=G+C$; P3: $A=B+C$; P4: $C=L+M$; P5: $F=G\div E$. Only
+P1$\parallel$P5, P2$\parallel$P3, P2$\parallel$P5, P3$\parallel$P5 and P4$\parallel$P5
+hold. P1$\parallel$P5 and P5$\parallel$P2, but P1 and P2 are not parallel (flow on $C$).
+\end{eg}
+
+\subsubsection{Compiler scheduling and loop unrolling}
+To avoid a stall, a dependent instruction must be separated from its producer by
+the producer's latency. With latencies load$\to$FP ALU 1, FP ALU$\to$FP ALU 3, FP
+ALU$\to$store 2 and one stall between an integer ALU op and a branch, the loop
+\texttt{x[i] = x[i] + s} takes 9 cycles per element unscheduled and 7 scheduled.
+\textbf{Loop unrolling} replicates the body (with different registers), removes
+repeated loop overhead and gives the scheduler independent instructions: unrolled 4
+times and scheduled, it takes 14 cycles for 4 elements (3.5 per element), at the
+cost of more registers and code.\HP[161]{\S3.2, Figure~3.2}{157}
+
+\subsubsection{Superpipelining and superscalar processors}
+\begin{itemize}
+  \item \textbf{Superpipelining}: more, shorter stages, so a faster clock; still at
+  most one instruction issued per cycle; larger branch and load penalties (e.g.\ the
+  8-stage MIPS R4000).\HPA{C}{\S C.6}{61}
+  \item \textbf{Superscalar}: issue several instructions per cycle (IPC $>1$); the
+  hardware checks dependences; \emph{statically} scheduled (in order) or
+  \emph{dynamically} scheduled (out of order). Dependences, branches, resources and
+  issue width limit the gain.
+  \item Both can be combined.
+\end{itemize}
+
+\begin{eg}[Superpipeline (Part 1 exercise)]
+A 12-stage pipeline issues at most one instruction per cycle; an instruction takes
+2 ns unpipelined. It is scalar but superpipelined. For 100 instructions (balanced
+stages, no stalls): unpipelined $100\times2=200$ ns; 5 stages
+$(5+99)\times0.4=41.6$ ns; 12 stages $(12+99)\times2/12=18.5$ ns.
+\end{eg}
+
+\subsubsection{Issue and completion policies}
+\begin{center}
+\small
+\begin{tabular}{@{}P{3.8cm}P{4.8cm}P{5.4cm}@{}}
+\toprule
+Policy & Behaviour & Hazards to check, cost \\
+\midrule
+In-order issue, in-order completion & a stalled instruction blocks all later ones & RAW only; simple, slow with long operations \\
+In-order issue, out-of-order completion & short operations may finish before long ones & RAW and WAW; a reorder buffer (ROB) restores order for precise exceptions \\
+Out-of-order issue, out-of-order completion & any ready instruction in a window may start & RAW, WAR, WAW; needs renaming, an instruction window, a ROB; fastest, most expensive \\
+\bottomrule
+\end{tabular}
+\end{center}
+\textbf{Dynamic scheduling} (Tomasulo's algorithm) issues in order but executes out
+of order, renaming registers through reservation stations to remove WAR and WAW.
+\textbf{Hardware speculation} adds a reorder buffer: results \emph{commit} in
+order, so exceptions are precise and mispredicted work can be
+discarded.\HP[175]{\S3.4}{167}\HP{\S3.6}{184}
+
+\subsubsection{VLIW}
+\begin{definition}[Very long instruction word]
+A VLIW processor issues a fixed number of operations packed by the
+\textbf{compiler} into one long instruction (one slot per functional unit). It has no
+hardware hazard detection or dynamic scheduling, so the hardware is simpler and uses
+less power. The compiler must find the parallelism: \textbf{loop unrolling},
+\textbf{software pipelining} (each new iteration takes instructions from different
+original iterations), \textbf{trace scheduling} and \textbf{superblocks} (scheduling
+across branches along the likely path).\HP[196]{\S3.7}{193}
+\end{definition}
+Drawbacks: unused slots hold \texttt{nop}s, so code grows; latencies are fixed in the
+code, so binaries are not compatible across implementations; a stall in one unit
+stalls the whole bundle; poor fit for unpredictable branches and pointer-heavy code.
+
+\begin{center}
+\small
+\begin{tabular}{@{}P{3.3cm}P{2cm}P{2.4cm}P{3.2cm}P{2.6cm}@{}}
+\toprule
+Approach & Issue & Hazard detection & Scheduling & Examples \\
+\midrule
+Superscalar (static) & dynamic & hardware & static & embedded MIPS, ARM \\
+Superscalar (dynamic) & dynamic & hardware & dynamic & few today \\
+Superscalar (speculative) & dynamic & hardware & dynamic, speculation & Intel Core i7, AMD \\
+VLIW/LIW & static & mainly software & static & TI C6x \\
+EPIC & mainly static & mainly software & mostly static & Itanium \\
+\bottomrule
+\end{tabular}
+\end{center}
+\HP{\S3.7, Figure~3.15}{194}
+
+% =============================================================================
+\subsection{Multithreading}
+\label{sec:multithreading}
+
+\begin{definition}[Hardware multithreading]
+Several threads share one core's functional units; the core keeps a separate PC,
+register set and page table per thread, so it can switch threads without an OS
+context switch. It raises \emph{throughput} and utilization by hiding stalls; a single
+thread is not faster.\HP[226]{\S3.12}{223}
+\end{definition}
+\begin{itemize}
+  \item \textbf{Coarse-grained}: switch only on costly stalls (L2/L3 misses). Little
+  slowdown of each thread, but the pipeline must refill on a switch, so short stalls
+  are not hidden.
+  \item \textbf{Fine-grained}: switch threads every cycle (round robin), skipping
+  stalled threads. Hides short and long stalls, but slows each individual thread.
+  \item \textbf{Simultaneous multithreading (SMT)}: on a multiple-issue, dynamically
+  scheduled core, issue instructions from \emph{several threads in the same cycle}.
+  It exploits \textbf{thread-level and instruction-level parallelism} together and
+  fills the issue slots one thread leaves empty (horizontal waste); Intel
+  Hyper-Threading.
+\end{itemize}
+
+\begin{eg}[Hiding a miss (Part 1)]
+A single-issue core runs thread T1, which misses in the cache for 3 cycles. Alone: T1,
+T1 (miss), idle, idle, idle, T1: 3 instructions in 6 cycles. With a second thread the
+idle cycles run T2: 6 instructions in 6 cycles. T1 still finishes at cycle 6.
+\end{eg}
+
+% =============================================================================
+\subsection{Cache Coherence}
+\label{sec:coherence}
+
+\begin{eg}[The coherence problem]
+$X=1$ in memory; write-through caches. A reads $X$ (1); B reads $X$ (1); A stores 0
+into $X$: A's cache and memory hold 0, but B's cache still holds 1, and B will read
+the stale value.\HP{\S5.2, Figure~5.3}{352}
+\end{eg}
+
+\begin{definition}[Coherence]
+A memory system is \textbf{coherent} if (1) a read by P of $X$ after P wrote $X$, with
+no other writes in between, returns P's value (\emph{program order}); (2) a read of
+$X$ sufficiently after another processor wrote it returns the written value (a
+\emph{coherent view}); (3) writes to the same location are \textbf{serialized}: all
+processors see them in the same order.\HP[353]{\S5.2}{352}
+\end{definition}
+Coherent caches allow \textbf{migration} (move data to the local cache: less latency
+and traffic) and \textbf{replication} (copies in several caches for simultaneous
+reads), done in hardware because software is too slow.
+
+\begin{center}
+\small
+\begin{tabular}{@{}lP{6cm}P{6cm}@{}}
+\toprule
+& Snooping & Directory-based \\
+\midrule
+Sharing state & kept by every cache holding a copy & kept in one place per block (a directory, distributed with memory) \\
+Communication & broadcast on a bus; all controllers snoop & point-to-point messages to the home node \\
+Write serialization & the bus orders writes & the directory orders them \\
+Scales to & small SMPs (a few dozen cores) & hundreds of processors (DSM/NUMA) \\
+Cost & bus bandwidth, broadcast energy & directory storage, 3-hop misses \\
+\bottomrule
+\end{tabular}
+\end{center}
+\HP[355]{\S5.2}{354}
+
+\paragraph{Write invalidate vs.\ write update.} \textbf{Write invalidate} (used in
+practice): a writer first gets exclusive access by invalidating all other copies;
+later writes are local. \textbf{Write update} (broadcast): every write sends the new
+value to all copies, which uses much more bandwidth.\HP[356]{\S5.2}{355}
+
+\subsubsection{MSI and MESI}
+\begin{definition}[MSI protocol]
+A write-invalidate protocol with three states per cache block:
+\textbf{M}odified (only copy, dirty; may read and write), \textbf{S}hared (clean,
+read-only, possibly in other caches), \textbf{I}nvalid.\HP[361]{\S5.2, Figures~5.5--5.7}{358}
+\end{definition}
+\begin{center}
+\small
+\begin{tabular}{@{}lll@{}}
+\toprule
+Event & Transition & Bus action \\
+\midrule
+Local read miss & I $\to$ S & read miss (BusRd) \\
+Local write (miss or hit in S) & I/S $\to$ M & write miss / invalidate \\
+Remote read of a block in M & M $\to$ S & write back (flush), supply data \\
+Remote write (or invalidate) & S, M $\to$ I & M writes back first \\
+Replacement of an M block & M $\to$ I & write back \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\begin{definition}[MESI protocol]
+MESI adds \textbf{E}xclusive: the block is in only this cache and is clean. A read
+miss with no other copy loads the block in E. A later write changes E $\to$ M
+\textbf{without any bus transaction}, which optimizes a block read and then written
+by the same core (e.g.\ single-threaded code). A remote read changes E $\to$ S. Intel
+i7 uses MESIF (adds Forward); MOESI adds Owned.\HP{\S5.2}{362}
+\end{definition}
+
+\begin{eg}[MSI trace (Group 4)]
+Two processors, memory $X=0$, write-back caches.
+\begin{center}
+\small
+\begin{tabular}{@{}llccc@{}}
+\toprule
+Step & Bus & Cache A & Cache B & Memory \\
+\midrule
+A reads $X$ & read miss & S 0 & I & 0 \\
+B reads $X$ & read miss & S 0 & S 0 & 0 \\
+A writes 1 & invalidate & M 1 & I & 0 \\
+B reads $X$ & miss; A writes back & S 1 & S 1 & 1 \\
+A writes 2 & invalidate & M 2 & I & 1 \\
+B writes 0 & write miss; A writes back, invalidates & I & M 0 & 2 \\
+\bottomrule
+\end{tabular}
+\end{center}
+\end{eg}
+\begin{remark}
+\slidefix{} Group~4's table leaves memory at 1 after ``B writes 0''. In H\&P's
+protocol a block in M that sees a write miss on the bus is written back before it
+is invalidated, so memory holds 2; B's new value 0 stays in B's cache until it is
+written back.\HP{\S5.2, Figure~5.6}{360}
+\end{remark}
+
+\begin{eg}[MESI trace (Group 4)]
+Three processors, $X=0$. A reads: miss, no other copy, A in \textbf{E}. A writes 1:
+\textbf{silent} E $\to$ M. B reads: A writes back, A and B in S (memory 1). C reads:
+A, B, C in S. C writes 2: invalidate, A and B in I, C in M. Under MSI, A's first
+write would have needed an invalidate on the bus.
+\end{eg}
+
+\subsubsection{Directory protocols}
+Each memory block has a directory entry with a state and a \textbf{sharing bit
+vector} (one bit per node): \textbf{Uncached} (no copy), \textbf{Shared} (one or more
+clean copies; memory up to date), \textbf{Modified} (exactly one node, the owner, has
+written it; memory stale). Messages go point to point: local node (requester), home
+node (memory and directory), remote node (has a copy). A write to a shared block
+makes the directory send invalidates only to the nodes in the bit
+vector.\HP[383]{\S5.4, Figure~5.20}{379}
+
+\paragraph{The fourth C: coherence misses.} \textbf{True sharing}: a word written by
+one processor is read by another. \textbf{False sharing}: processors use
+\emph{different} words in the same block, so invalidations move the block with no
+real data flow; fix with padding or a different data layout.\HP{\S5.3}{366}
+
+% =============================================================================
+\subsection{Worked Problems}
+\label{sec:mp-problems}
+
+\begin{eg}[Flynn (Part 1)]
+One core, one instruction at a time: SISD. A vector unit applying one operation to
+8 elements: SIMD. Four processors running different branches of a simulation on
+different data: MIMD. ``Four cores'' alone: not enough information.
+\end{eg}
+
+\begin{eg}[Which primitive? (Part 1)]
+Workers updating one shared counter: a lock (spinning wastes CPU while waiting).
+No worker may start phase 2 before all finish phase 1: a barrier (the slowest worker
+delays all). A lock held 50~\textmu s with 16 runnable threads on 4 cores: spinning
+burns about $12\times50=600$ thread-\textmu s; sleeping is better. 1024 workers with
+a barrier after every tiny step: barrier contention dominates; use a tree barrier or
+coarser phases. 8 threads add to a total, then one prints it: a lock around
+\texttt{total += x} and a barrier before printing.
+\end{eg}
+
+\begin{eg}[2-way superscalar issue (Part 1)]
+\texttt{I1: R1 = R2 + R3}; \texttt{I2: R4 = R5 + R6}; \texttt{I3: R7 = R1 + R8};
+\texttt{I4: R9 = R10 + R11}. I3 needs I1's result. In-order 2-way issue:
+(I1, I2), then (I3, I4): 2 issue cycles. A width of 2 does not guarantee 2 per cycle:
+if I2 depended on I1, 3 cycles would be needed.
+\end{eg}
+
+% =============================================================================
+\subsection{Textbook Exercises}
+\label{sec:mp-tbx}
+
+\begin{remark}
+Group~4 worked H\&P Exercises 3.14 and 5.4 in their slides. Check two points before
+reusing those answers: (1) H\&P counts a latency of $n$ as $n$ stall cycles between
+producer and consumer (\S3.2, p.~158), while the slides insert $n-1$; (2) Exercise
+5.4 starts from the cache state of Figure~5.35 (P0 already holds block 110 in M,
+P3 holds 120 in S), while the slides assume empty caches.
+\end{remark}
+
+\begin{tbexercise}{5.1}{412}{\S5.2 (snooping MSI), \hppages{}{356}{361}}
+Each of the four-block, direct-mapped, two-word-block private caches is kept
+coherent with the MSI snooping protocol. Initial state (state, tag, data):
+\begin{center}
+\scriptsize
+\begin{tabular}{@{}lccc@{}}
+\toprule
+& P0 & P1 & P3 \\
+\midrule
+B0 & I 100 (00 10) & I 100 (00 10) & S 120 (00 20) \\
+B1 & S 108 (00 08) & M 128 (00 68) & S 108 (00 08) \\
+B2 & M 110 (00 30) & I 110 (00 10) & I 110 (00 10) \\
+B3 & I 118 (00 10) & S 118 (00 18) & I 118 (00 10) \\
+\bottomrule
+\end{tabular}
+\end{center}
+Memory: 100: 00 10, 108: 00 08, 110: 00 10, 118: 00 18, 120: 00 20, 128: 00 28,
+130: 00 30. Applying each action independently to this state, give the blocks that
+change and the value returned by each read: (a) P0: read 120; (b) P0: write 120
+$\leftarrow$ 80; (c) P3: write 120 $\leftarrow$ 80; (d) P1: read 110; (e) P0: write
+108 $\leftarrow$ 48; (f) P0: write 130 $\leftarrow$ 78; (g) P3: write 130 $\leftarrow$ 78.
+\end{tbexercise}
+
+\begin{tbexercise}{5.4}{415}{\S5.2--5.3, \hppages{}{356}{367}}
+Same initial state as Exercise 5.1. A miss costs $N_{memory}=100$ cycles if served by
+memory and $N_{cache}$ if served by another cache (40 in implementation 1, 130 in
+implementation 2); a write hit that invalidates costs $N_{invalidate}=15$; a
+write-back adds $N_{writeback}=10$. Compute the total stall cycles for the MSI
+protocol (the book also asks for MOSI): (a) P0: read 110, P3: read 110, P0: read
+110; (b) P1: read 120, P3: read 120, P0: read 120; (c) P0: write 120 $\leftarrow$ 80,
+P3: read 120, P0: read 120; (d) P0: write 108 $\leftarrow$ 88, P3: read 108, P0: write
+108 $\leftarrow$ 98.
+\end{tbexercise}
+
+\begin{tbexercise}{5.7}{416}{\S5.5 (spin locks), \hppages{}{389}{391}}
+P0, P1 and P3 try to acquire a lock at address 0x100, with the cache state of
+Exercise 5.1, implementation-1 timing and 1000-cycle critical sections. (a) With the
+simple exchange spin lock, about how many memory stall cycles does each processor
+incur before acquiring the lock? (b) Repeat with the test-and-test-and-set lock.
+(c), (d) About how many interconnect transactions occur with each lock?
+\end{tbexercise}
+
+\begin{tbexercise}{5.8}{417}{\S5.6 (consistency), \hppages{}{392}{395}}
+Under SC a processor must stall a read until an earlier write is ordered; TSO lets
+reads pass the processor's own buffered writes. One memory operation per cycle; hits
+and write-buffer hits cost nothing; misses cost as in Exercise 5.4 (implementation 1).
+With the cache state of Exercise 5.1, how many stall cycles occur before each
+operation under SC and under TSO? (a) P0: write 110 $\leftarrow$ 80, P0: read 108;
+(b) P0: write 100 $\leftarrow$ 80, P0: read 108; (c) P0: write 110 $\leftarrow$ 80, P0:
+write 100 $\leftarrow$ 90; (d) P0: write 100 $\leftarrow$ 80, P0: write 110
+$\leftarrow$ 90.
+\end{tbexercise}
+
+\begin{tbexercise}{5.19}{426}{\S5.1 and \S1.9 (Amdahl), \hppages{}{348}{350}}
+$F(i,p)$ is the fraction of time that exactly $i$ of $p$ processors are usable
+($\sum_{i=1}^{p}F(i,p)=1$), and with $i$ processors the application runs $i$ times
+faster. Rewrite Amdahl's law to give the speedup as a function of $p$.
+\end{tbexercise}
+
+\begin{tbexercise}{5.29}{428}{\S5.5, \hppages{}{387}{388}}
+Implement the classical test-and-set instruction using the load-linked/store-conditional
+pair.
+\end{tbexercise}
+
+\begin{tbexercise}{3.14}{255}{\S3.2 and \S3.7, \hppages{}{157}{162},
+\hppages{}{193}{197}}
+The DAXPY loop $Y=aX+Y$ (100 elements; \texttt{R1}, \texttt{R2} point to $X$, $Y$):
+\begin{lstlisting}
+      DADDIU R4,R1,#800
+foo:  L.D    F2,0(R1)
+      MUL.D  F4,F2,F0
+      L.D    F6,0(R2)
+      ADD.D  F6,F4,F6
+      S.D    F6,0(R2)
+      DADDIU R1,R1,#8
+      DADDIU R2,R2,#8
+      DSLTU  R3,R1,R4
+      BNEZ   R3,foo
+\end{lstlisting}
+Latencies: FP multiply $\to$ FP ALU 6; FP add $\to$ FP ALU 4; FP multiply $\to$
+store 5; FP add $\to$ store 4; integer operations and loads $\to$ any 2. One-cycle
+delayed branch resolved in ID; full bypassing. (a) Single issue: show the loop
+unscheduled and scheduled, the cycles per element of $Y$, and how much faster the
+clock would have to be to match the scheduling gain. (b) Unroll the loop as many
+times as needed to remove all stalls; show the schedule and the cycles per element.
+(The book's part (c) schedules it on a 5-slot VLIW.)
+\end{tbexercise}
