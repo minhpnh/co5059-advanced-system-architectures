@@ -1,0 +1,596 @@
+% !TeX program = xelatex
+% Final exam cheat sheet: 2 A4 sheets, printed double-sided (4 pages), no colour.
+% Topics follow the lecturer's exam scope. Build: xelatex final-cheat-sheet.tex
+\documentclass[10pt]{extarticle}
+\usepackage[a4paper,margin=0.28in,includefoot,footskip=0.18in]{geometry}
+\usepackage{fontspec}
+\usepackage{microtype}
+\usepackage{amsmath,amssymb}
+\usepackage{multicol}
+\usepackage{enumitem}
+\usepackage{booktabs}
+\usepackage{xcolor}
+% array pinned: the local texmf array.sty needs a newer kernel (see README)
+\usepackage{array}[=2024-06-01]
+\usepackage{tabularx}
+\usepackage{needspace}
+
+\pagestyle{plain}
+\setlength{\columnsep}{0.14in}
+\setlength{\columnseprule}{0.3pt}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{1pt}
+\setlist{nosep,leftmargin=0.95em,labelsep=0.3em}
+\setlength{\tabcolsep}{2.5pt}
+\renewcommand{\arraystretch}{1.02}
+\AtBeginDocument{%
+  \setlength{\abovedisplayskip}{1.5pt}\setlength{\belowdisplayskip}{1.5pt}%
+  \setlength{\abovedisplayshortskip}{1pt}\setlength{\belowdisplayshortskip}{1pt}}
+
+% topic banner and numbered block heading
+\newcommand{\topic}[1]{\par\needspace{8\baselineskip}\vspace{3pt}\noindent
+  \colorbox{black!12}{\parbox{\dimexpr\linewidth-2\fboxsep}{\bfseries\small #1}}\par\vspace{1pt}}
+\newcounter{cs}
+\newcommand{\cs}[1]{\par\needspace{5\baselineskip}\vspace{2.5pt}\refstepcounter{cs}%
+  \noindent{\bfseries\thecs.\ #1}\par\vspace{0.5pt}\hrule\vspace{1.5pt}}
+\newcommand{\key}[1]{\par\smallskip\noindent\fbox{\parbox{\dimexpr\linewidth-2\fboxsep-2\fboxrule}{\centering$\displaystyle #1$}}\par\smallskip}
+\newcommand{\CPI}{\mathrm{CPI}}
+\newcommand{\IC}{\mathrm{IC}}
+\newcommand{\ET}{\mathrm{ET}}
+\newcommand{\MR}{\mathrm{MR}}
+\newcommand{\MP}{\mathrm{MP}}
+\newcommand{\HT}{\mathrm{HT}}
+\newcommand{\AMAT}{\mathrm{AMAT}}
+\newcommand{\tw}[1]{\texttt{#1}}
+
+\begin{document}
+\begin{center}
+  {\large\bfseries CO5059 Advanced System Architectures -- Final Cheat Sheet}\\[0.5pt]
+  {\scriptsize Personal study aid; H\&P \emph{Computer Architecture: A Quantitative
+  Approach} 5th ed.\ and the course slides.}
+\end{center}
+\vspace{-3pt}
+
+\raggedcolumns
+\begin{multicols*}{3}
+\raggedright
+
+% #############################################################################
+\topic{1 \quad PERFORMANCE}
+
+\cs{Performance and speedup}
+$\text{Perf}=1/\ET$; $\text{Speedup}_{A/B}=\ET_B/\ET_A=\text{old}/\text{new}$.
+\begin{itemize}
+  \item ``X is $n\%$ faster than Y'': $\ET_Y/\ET_X=1+n/100$; divide by the
+  \emph{faster} time (15 s vs.\ 10 s $=50\%$ faster).
+  \item CPU time $=$ user $+$ system; \%CPU $=(u+s)$/elapsed (can exceed 100\%
+  with several cores).
+  \item Latency $=$ time per task; throughput $=$ tasks/time; one task at a time:
+  throughput $=1/$latency.
+\end{itemize}
+
+\cs{CPU equation and CPI}
+\key{T=\IC\times\CPI\times C=\frac{\IC\times\CPI}{f}}
+$\text{Cycles}=\sum\CPI_i\IC_i$;\quad $\CPI=\sum\CPI_iF_i$,\ $F_i=\IC_i/\IC$.\\
+Time fraction of class $i=\CPI_iF_i/\CPI$.
+\begin{itemize}
+  \item Program/compiler/ISA $\to$ IC, CPI; organization $\to$ CPI, $C$;
+  technology $\to C$.
+  \item Compare total cycles, not IC or CPI alone (removing cheap instructions
+  raises CPI but saves time).
+  \item $\text{MIPS}=\IC/(T\cdot10^6)=f/(\CPI\cdot10^6)$; fair only for the same
+  ISA, program, compiler. $\text{MFLOPS}=\#\text{FP}/(T\cdot10^6)$.
+  \item 200 MHz $\to$ 5 ns; 2.5 GHz $\to$ 0.4 ns; 3 GHz $\to$ 0.333 ns.
+\end{itemize}
+\textbf{Ex.} ALU 50\%/1, Load 20\%/5, Store 10\%/3, Br 20\%/2: $\CPI=2.2$; load time
+share $1.0/2.2=45\%$.
+\textbf{Ex.} 4M instr, 2.5 GHz, 8 ms $\Rightarrow\CPI=8\,\text{ms}\cdot2.5\,\text{GHz}/4\text{M}=5$;
+new compiler 5M instr, CPI 2: 4 ms, speedup 2.
+
+\cs{CPI with stalls}
+$\CPI=\CPI_{\text{ideal}}+$ stalls/instr; each source $=$ frequency $\times$ fraction
+penalized $\times$ penalty. Memory: $+\frac{\text{acc}}{\text{instr}}\times\MR\times\MP$
+(acc $=1+f_{ld/st}$).
+
+\cs{Amdahl's law}
+$F$ = fraction of \emph{old time} enhanced, $S$ = its speedup.
+\key{\text{Speedup}=\frac{1}{(1-F)+F/S}\le\frac{1}{1-F}}
+\begin{itemize}
+  \item $\ET_{new}=\ET_{old}[(1-F)+F/S]$.
+  \item Several disjoint: $1/\big((1-\sum F_i)+\sum F_i/S_i\big)$.
+  \item Parallel: $1/((1-p)+p/N)$.
+  \item Target $T$: $S=\dfrac{F}{1/T-(1-F)}$; impossible if $T\ge\frac1{1-F}$.
+  \item From a mix: $F=\CPI_iF_i/\CPI$, \emph{not} $F_i$.
+  \item $f'$ measured on the \emph{new} time: Speedup $=(1-f')+f'S$,
+  $F=f'S/((1-f')+f'S)$.
+  \item Clock slowed by $k$: Speedup $=1/\big([(1-F)+F/S]\,k\big)$.
+\end{itemize}
+\textbf{Ex.} mul 60\% ($\times6$), div 30\% ($\times12$): mul alone $1/(0.4+0.1)=2$;
+div alone $1.38$ ($\le1/0.7$); both $1/0.225=4.44$.
+
+% #############################################################################
+\topic{2 \quad INSTRUCTION SET ARCHITECTURE}
+
+\cs{ISA styles ($C=A+B$)}
+{\scriptsize
+\begin{tabularx}{\linewidth}{@{}lX@{}}
+\toprule
+Stack & \tw{PUSH A; PUSH B; ADD; POP C}; dense code, stack bottleneck \\
+Accum. & \tw{LOAD A; ADD B; STORE C}; one register AC, heavy memory traffic \\
+Mem-mem & \tw{ADD C,A,B}; all operands in memory \\
+Reg-mem & \tw{LOAD R1,A; ADD R3,R1,B; STORE R3,C} (x86, 68000, VAX) \\
+Load-store & \tw{LOAD R1,A; LOAD R2,B; ADD R3,R1,R2; STORE R3,C}; MIPS; easy to pipeline \\
+\bottomrule
+\end{tabularx}}
+Design: operations, addressing modes, data types, format, registers.
+Instruction types: data processing, data storage (LD/ST), data movement (MOV),
+control. Cycle: IF, ID, operand fetch, EX, WB.
+
+\cs{Addressing modes}
+{\scriptsize
+\begin{tabularx}{\linewidth}{@{}lX@{}}
+Immediate & \tw{ADD R0,\#10} \\
+Register & \tw{ADD R0,R1} \\
+Direct & \tw{ADD R0,(100)}: M[100] \\
+Reg.\ indirect & \tw{ADD R0,(R1)}: M[R1] \\
+Displacement & \tw{LD R1,100(R2)}: M[R2+100] \\
+Indexed & \tw{(R1+R2)}: M[R1+R2] \\
+Mem.\ indirect & M[M[R2]] \\
+PC-relative & PC $+$ offset \\
+Scaled & M[100+R3+R4$\cdot d$] \\
+\end{tabularx}}
+Displacement and immediate dominate (SPEC89); most displacements fit in 12--16
+bits; small constants $\approx50\%$ of operands.
+
+\cs{Format, CISC vs.\ RISC}
+\begin{itemize}
+  \item Variable length (VAX, x86): dense, hard decode; fixed (MIPS, ARM): easy
+  decode and pipelining; hybrid (MIPS16, Thumb).
+  \item Field for $n$ choices: $\lceil\log_2n\rceil$ bits; $k$-bit signed:
+  $-2^{k-1}\ldots2^{k-1}-1$. Expanding opcode: spare codes become escapes.
+  \item More registers: fewer spills, but more bits per instruction, slower
+  register file, more state to save.
+  \item CISC: fewer, complex, variable-length instructions; many modes (68020:
+  25); costly memory. RISC: fixed 32-bit, load-store, few modes, CPI$\to$1, more
+  instructions.
+\end{itemize}
+
+\cs{MIPS}
+{\scriptsize
+\begin{tabular*}{\linewidth}{@{\extracolsep{\fill}}lcccccc@{}}
+\toprule
+& 31--26 & 25--21 & 20--16 & 15--11 & 10--6 & 5--0\\
+\midrule
+R & op 0 & rs & rt & rd & shamt & funct\\
+I & op & rs & rt & \multicolumn{3}{c}{imm 16}\\
+J & op & \multicolumn{5}{c}{address 26}\\
+\bottomrule
+\end{tabular*}}
+\begin{itemize}
+  \item Branch: target $=$ PC$+4+$SignExt(imm)$\times4$; offset
+  $=(T-(\text{PC}+4))/4$; reach $\pm2^{15}$ instructions.
+  \item J: $\{(\text{PC}+4)[31{:}28],\text{addr},00\}$, same 256 MiB; field $=T/4$.
+  \tw{jr}: any address.
+  \item Shifts: source \tw{rt}, \tw{rs}$=0$. I-format destination \tw{rt}.
+  \item Sign-extend: \tw{addi slti}, ld/st offsets, branches. Zero-extend:
+  \tw{andi ori xori}.
+  \item \tw{add addi sub} trap on overflow; \tw{addu addiu subu} never. \tw{slt}
+  signed, \tw{sltu} unsigned. \tw{lb lh} sign-extend, \tw{lbu lhu} zero-extend;
+  words aligned.
+  \item No MOV (\tw{add \$d,\$s,\$zero}), NOT (\tw{nor \$d,\$s,\$zero}), SUBI
+  (\tw{addi} $-k$), SLA ($=$ \tw{sll}).
+  \item 32-bit constant: \tw{lui t,hi; ori t,t,lo} (\tw{addi} breaks if lo $\ge$
+  \tw{0x8000}); \tw{lui 0x1234; addi 0x5678} $=$ \tw{0x12345678}.
+  \item \tw{mult/div} $\to$ HI, LO (LO quotient, HI remainder).
+  \item Big-endian: MSB at lowest address (course); x86 little-endian (MSB at
+  highest).
+  \item \tw{ll/sc}: \tw{sc} returns 1 if no write since \tw{ll}, else 0: retry.
+  \item \tw{jal}: \tw{\$ra}$\leftarrow$PC$+4$; non-leaf saves \tw{\$ra}; stack
+  grows down. Preserved: \tw{\$s0--7 \$sp \$fp \$ra \$gp}; not: \tw{\$t \$a \$v}.
+\end{itemize}
+{\scriptsize
+\textbf{funct} (op 0): sll 00, srl 02, sra 03, jr 08, jalr 09, add 20, addu 21,
+sub 22, subu 23, and 24, or 25, xor 26, nor 27, slt 2a, sltu 2b.\\
+\textbf{opcode}: j 02, jal 03, beq 04, bne 05, addi 08, addiu 09, slti 0a, sltiu 0b,
+andi 0c, ori 0d, xori 0e, lui 0f, lb 20, lh 21, lw 23, lbu 24, lhu 25, sb 28, sh 29,
+sw 2b, ll 30, sc 38 (hex).\par}
+\$zero 0, \$at 1, \$v0--1 2--3, \$a0--3 4--7, \$t0--7 8--15, \$s0--7 16--23,
+\$t8--9 24--25, \$gp 28, \$sp 29, \$fp 30, \$ra 31.
+
+% #############################################################################
+\topic{3 \quad PIPELINING}
+
+\cs{Timing}
+\key{\text{Cycles}=k+(n-1)+\text{stalls},\quad t_{clk}=\max t_i+t_{latch}}
+\begin{itemize}
+  \item Unpipelined: $\sum t_i$ per instruction. Ideal speedup
+  $\frac{nk}{k+n-1}\to k$.
+  \item $\CPI=1+$stalls; Speedup $=\frac{\CPI_u}{\CPI_p}\cdot\frac{C_u}{C_p}
+  =\frac{\text{depth}}{1+\text{stalls}}$.
+  \item 100 tasks, 6 stages, 2 ns: $(6+99)\cdot2=210$ ns.
+  \item No common clock (lecturer): $T(n)=\sum t_i+(n-1)\max t_i$. Stages
+  5,4,5,10,4: 3 instructions $=28+20=48$ ns; instruction $i$ waits $(i-1)(10-5)$:
+  the 4th waits 15 ns.
+  \item Improves throughput, not latency; unbalanced stages hurt.
+\end{itemize}
+
+\cs{Stages and hazards}
+IF, ID (read registers), EX, MEM, WB. Register file: write first half, read second
+half. Hazards: structural (one memory port: split I/D), data, control. Dependences:
+RAW (true), WAR (anti), WAW (output); \textbf{RAR is not a hazard}. 5-stage: only
+RAW stalls.
+{\scriptsize
+\begin{tabularx}{\linewidth}{@{}Xc@{}}
+\toprule
+Producer $\to$ consumer at distance $d$ & stalls\\
+\midrule
+no forwarding & $\max(0,3-d)$\\
+fwd ALU$\to$ALU (EX/MEM, MEM/WB$\to$EX) & 0\\
+fwd load$\to$use, $d=1$ & 1\\
+fwd load$\to$use $d\ge2$; load$\to$store data & 0\\
+\bottomrule
+\end{tabularx}}
+Diagram: a stalled instruction waits in ID (\textit{st} after ID); the next waits
+in IF; fetch when IF is free. Total $=$ last WB. Reordering must keep RAW, WAR and
+WAW (rename if needed). Forwarding is hardware; scheduling, delay slots and static
+prediction are compiler techniques.
+
+\cs{Lecturer's pipeline problem}
+\tw{lw t0; lw t1; add t3,t0,t1; sw t3; lw t0; add t3,t0,t1; sw t3}: no fwd
+\textbf{19} cycles (8 stalls); fwd \textbf{13} (2 load-use stalls); reorder
+(1)(2)(3)(5)(4)(6)(7): \textbf{12} (moving (5) above (3) is a WAR bug); with
+renaming 11.
+
+\cs{Control hazards}
+Penalty $=$ resolving stage $-1$ (MEM: 3, ID: 1).
+$\CPI=1+f_{br}\times\text{fraction penalized}\times\text{penalty}$.
+Stall/flush; predict not taken (taken branches pay); predict taken (no gain in
+the 5-stage MIPS); delayed branch: slot from before (best), from the target (useful
+if taken), from the fall-through (useful if not). $\approx60\%$ of slots filled,
+80\% of those usefully.
+\textbf{Ex.} 20\% branches, 60\% taken: MEM stall 1.6; MEM predict-not-taken 1.36;
+ID stall 1.2; ID predict-not-taken 1.12.
+
+% #############################################################################
+\topic{4 \quad CACHE}
+
+\cs{Address breakdown}
+$C$ size, $B$ block, $a$ ways, $A$ address bits.
+\key{S=\frac{C}{B\cdot a},\ O=\log_2B,\ I=\log_2S,\ \text{tag}=A-I-O}
+Block addr $=\lfloor\text{addr}/B\rfloor$; set $=$ block mod $S$; tag
+$=\lfloor\text{block}/S\rfloor$. DM: $a=1$; FA: $S=1$, no index. Doubling $a$:
+index $-1$, tag $+1$. Bits per block $=8B+$tag$+$V($+$D)($+$LRU).
+\textbf{Ex.} 8 KB 2-way 16 B, 32-bit: O 4, I 8, tag 20; addresses 0x00 0x14 0x08 0x10
+0x20 $\to$ blocks 0 1 0 1 2: M M H H M $=$ \textbf{3 misses}.
+\textbf{Ex.} Byte 1200, DM 64 blocks of 16 B: block 75, line 11.
+
+\cs{Four questions}
+Placement (DM / set associative / FA); identification (tag $+$ valid);
+replacement; write strategy.
+
+\cs{Replacement}
+\begin{itemize}
+  \item Random; LRU (update on every access; $\lceil\log_2 n!\rceil$ bits); FIFO
+  (oldest; hits do not reorder).
+  \item \textbf{Tree-LRU}: $n-1$ bits; 4-way: $b_0$ chooses the pair, $b_1$ in
+  \{0,1\}, $b_2$ in \{2,3\}; an access sets the path bits to point \emph{away};
+  victim: follow the bits. w0: $b_0{=}1,b_1{=}1$; w1: $b_0{=}1,b_1{=}0$; w2:
+  $b_0{=}0,b_2{=}1$; w3: $b_0{=}0,b_2{=}0$.
+  \item \textbf{Clock}: reference bit per way $+$ pointer; an access sets the bit;
+  to replace: bit 1 $\to$ clear and advance; bit 0 $\to$ evict. New block gets bit
+  1; the pointer moves past it.
+  \item H\&P pseudo-LRU: one bit per way, all but the newest cleared when full.
+  \item Replacement has a second-order effect (only on misses).
+\end{itemize}
+
+\cs{Write policies}
+{\scriptsize
+\begin{tabularx}{\linewidth}{@{}lX@{}}
+\toprule
+Write-through & cache $+$ lower level; no dirty bit; write buffer; memory current \\
+Write-back & cache only; dirty bit; written on eviction; less traffic \\
+Write allocate & write miss: fetch the block, then write \\
+No-write alloc. & write miss: write the lower level only \\
+\bottomrule
+\end{tabularx}}
+Pairs: WB$+$WA, WT$+$NWA. W100 W100 R200 W200 W100: NWA 4 misses 1 hit; WA 2 misses 3 hits.
+
+\cs{The 3 Cs}
+Compulsory (first access; infinite cache); capacity (also misses in an FA cache of
+the same size); conflict (hits in FA, misses here); $+$ coherence. 8-way $\approx$
+FA; 2:1 rule: DM of size $N$ $\approx$ 2-way of size $N/2$.
+
+\cs{Performance}
+\key{\AMAT=\HT+\MR\times\MP}
+\[\text{CPU time}=\IC\Big(\CPI_{ex}+\tfrac{\text{acc}}{\text{instr}}\MR\cdot\MP\Big)C\]
+Misses/instr $=\MR\times$ acc/instr. Split I/D: \%I $=1/(1+f_{data})$; a unified
+cache adds a cycle per data access (one port).
+\textbf{Ex.} $\CPI_{ex}=1$, 1.5 acc, 2\%, MP 25: $\CPI=1.75$.
+\textbf{Ex.} Hit 1, miss 105, no cache 100: 5\% $\to$ 6.2 (or 6.25); random accesses
+$\to\approx105$: without locality a cache hurts.
+
+\cs{Multilevel}
+\key{\AMAT=\HT_1+\MR_1(\HT_2+\MR_{2}\cdot\MP_2)}
+Local $\MR_2=$ misses$_2$/accesses$_2$ (accesses$_2=$ misses$_1$); global $=\MR_1\MR_2$.
+Stalls/instr $=\frac{\text{m}_1}{\text{I}}\HT_2+\frac{\text{m}_2}{\text{I}}\MP_2$.
+L2 reduces the L1 \emph{miss penalty}. Inclusion: L1 $\subset$ L2; exclusion: swap.
+\textbf{Ex.} 1000 refs, 40 L1, 20 L2 misses; 1/10/200 cycles: local 50\%, global
+2\%, $\AMAT=1+0.04(10+0.5\cdot200)=5.4$. \textbf{Ex.} 1 ns, 10\%, 100 ns $\to$ 11 ns;
+add L2 8 ns, 20\%, 105 ns $\to$ 3.9 ns.
+
+\cs{Optimizations}
+{\scriptsize
+\begin{tabularx}{\linewidth}{@{}lX@{}}
+\toprule
+Larger block & $\downarrow$compulsory; $\uparrow$MP, conflict \\
+Larger cache & $\downarrow$capacity; $\uparrow$HT, cost \\
+Higher assoc. & $\downarrow$conflict; $\uparrow$HT \\
+Multilevel & $\downarrow$MP \\
+Reads before writes & $\downarrow$MP; check the write buffer (RAW) \\
+Avoid translation & $\downarrow$HT: VIPT, $C/a\le$ page size \\
+\bottomrule
+\end{tabularx}}
+Advanced: small simple L1, way prediction, pipelined access, nonblocking,
+multibanked (bank $=$ block mod $n$), critical word first, merging write buffer,
+compiler (blocking), HW/SW prefetching.
+\textbf{Ex.} L1 A: 2-way 0.6 ns 5\%; B: 8-way 0.8 ns 4\%: B wins only if MP $>20$ ns.
+
+% #############################################################################
+\topic{5 \quad VIRTUAL MEMORY}
+
+\cs{Basics}
+Main memory caches the disk; private space per process; program $>$ RAM, isolation,
+relocation, sharing, non-contiguous pages. Page $=$ frame size (4 KiB). PTE: PFN,
+valid/present, R/W/X, U/S, dirty, reference. The page table (indexed by VPN) stores
+\textbf{physical page numbers}. Placement fully associative; replacement by the OS
+(LRU approx., use bit); writes always \textbf{write-back}. Internal fragmentation
+(paging) vs.\ external (segmentation).
+
+\cs{Translation}
+\key{\text{VPN}=\lfloor\text{VA}/P\rfloor,\ \text{off}=\text{VA}\bmod P,\ \text{PA}=\text{PFN}\cdot P+\text{off}}
+4 KiB: low 3 hex digits $=$ offset: \tw{0x00403A7C}, VPN 403$\to$1F2: \tw{0x1F2A7C}.
+VA 3500, $P=1024$, page 3$\to$7: offset 428, PA 7596.
+\begin{itemize}
+  \item Flat table $=2^{\text{VPN bits}}\times$ PTE, per process: 32-bit, 4 KiB, 4 B
+  $\to$ 4 MiB (100 processes: 400 MiB).
+  \item Multilevel: field $=\log_2(P/\text{PTE})$ bits: $10+10+12$; x86-64
+  $4\times9+12$; a walk costs $k$ accesses.
+  \item Inverted: one entry per frame, hashed on the VPN.
+\end{itemize}
+
+\cs{TLB}
+Small (fully associative) cache of VPN$\to$PFN. Hit: no table access. Miss: walk;
+page present $\to$ refill, else \textbf{page fault}. TLB miss $\ne$ page fault (may
+or may not occur).
+\key{\text{EAT}=h(t+m)+(1-h)(t+km+m)}
+$t=20$, $m=100$, $h=98\%$: 122 ns. Reach $=$ entries $\times$ page. Context switch:
+flush or ASID. Impossible: TLB hit with page fault; page fault with cache hit.
+
+\cs{Page faults}
+Trap $\to$ check legality $\to$ free frame or victim (write back if dirty) $\to$
+load $\to$ update PTE $\to$ restart. $\text{EAT}=(1-p)m+p\,s$ (slide:
+$T_{mem}+(1-h)T_{disk}$). 100 ns, 10 ms, 0.1\%: $\approx10{,}100$ ns. Thrashing:
+working sets $>$ RAM.
+
+\cs{Page replacement}
+OPT (next use furthest; lower bound); FIFO (oldest; Belady: \tw{123412512345} 9
+faults/3 frames, 10/4); LRU (a stack algorithm); LFU; Clock.
+\tw{121132143112415621}, 3 frames: FIFO \textbf{9}, LRU \textbf{11}, OPT 7, Clock 9.
+\tw{70120304}: FIFO 7, LRU 6. With $k$ empty frames the first $k$ distinct pages fault.
+
+\cs{Segmentation and protection}
+(seg, off): if off $<$ limit then PA $=$ base $+$ off, else trap. (2,53), base 4300,
+limit 400 $\to$ 4353; (2,400) traps. Paging vs.\ segments: fixed/variable size, 1/2
+address words, internal/external fragmentation, trivial/hard replacement. Paged
+segments combine both. x86 real mode: seg$\times16+$off. Protection: isolation,
+R/W/X, user/kernel; needs $\ge2$ modes, state users cannot write, system call and
+return.
+
+\cs{VA to cache (VIPT)}
+Index within the page offset: $I+O\le$ offset bits $\iff C/a\le P$.
+64-bit VA, 41-bit PA, 8 KB pages: VPN 51 $=$ TLB tag 43 $+$ index 8; L1 index 7 $+$
+offset 6; L1 tag 28; L2 $19+16+6$.
+{\scriptsize
+\begin{tabular*}{\linewidth}{@{\extracolsep{\fill}}lll@{}}
+\toprule
+& L1 cache & VM\\
+\midrule
+Unit & 16--128 B & 4--64 KiB\\
+Hit & 1--3 cycles & 100--200 cycles\\
+Miss penalty & 8--200 cycles & $10^6$--$10^7$ cycles\\
+Miss rate & 0.1--10\% & $10^{-5}$--$10^{-3}$\%\\
+Replacement & hardware & OS\\
+\bottomrule
+\end{tabular*}}
+
+% #############################################################################
+\topic{6 \quad MULTIPROCESSORS}
+
+\cs{Classification}
+Flynn: SISD (uniprocessor), SIMD (vector, GPU), \textbf{MISD (none built)}, MIMD
+(multicore). UMA/SMP: one shared memory, equal latency, bus limits scaling.
+NUMA/DSM: distributed memory, one address space, remote accesses slower. Message
+passing: clusters. Walls: power, ILP, memory. Speedup 80 on 100 processors needs
+99.75\% parallel. Remote 666 cycles at 0.2\%, base CPI 0.5: $\CPI=1.7$.
+
+\cs{Synchronization}
+Race: shared data $+$ a write $+$ no synchronization. Critical section: mutual
+exclusion, progress, bounded waiting. Atomic primitives: test-and-set, exchange,
+fetch-and-increment, CAS, \tw{ll/sc}.
+\textbf{Spin lock}: loop on exchange (each try is a write $\to$ invalidations).
+\textbf{TTAS}: spin on a cached read; exchange only when free. Backoff; queue (MCS)
+locks. Mutex: sleeps; for long waits. Deadlock: circular wait $\to$ one lock order.
+\textbf{Barrier}: counter $+$ release flag; reuse can deadlock $\to$
+sense-reversing; tree barrier at scale.
+
+\cs{Consistency}
+Coherence: one location. Consistency: order across locations. \textbf{SC}: one global
+order, each thread in program order. \tw{x=1; r0=y} $\|$ \tw{y=1; r1=x}: $r0=r1=0$
+impossible under SC, possible with a store buffer. TSO/PC: W$\to$R relaxed (x86);
+PSO: also W$\to$W; weak ordering: only syncs ordered; release consistency:
+acquire/release.
+
+\cs{Dependences and ILP}
+True (RAW, real); anti (WAR) and output (WAW) are name dependences, removed by
+\textbf{renaming}; control; resource. Bernstein: $P_1\|P_2$ iff
+$I_1\cap O_2=I_2\cap O_1=O_1\cap O_2=\emptyset$. GCD test: store \tw{X[ai+b]}, load
+\tw{X[ci+d]}: a dependence needs $\gcd(a,c)\mid(d-b)$. Loop-carried: DOALL /
+DOACROSS. Unrolling \tw{x[i]+=s}: 9 $\to$ 7 cycles; unrolled $\times4$: 3.5/element.
+\begin{itemize}
+  \item \textbf{Superpipeline}: more, shorter stages, faster clock, 1 issue per
+  cycle, larger penalties. 12 stages, 2 ns, 100 instr: 18.5 ns (5 stages 41.6, none
+  200).
+  \item \textbf{Superscalar}: $n$ issues per cycle, hardware checks (IPC $>1$).
+  \item In-order issue and completion: RAW. In-order issue, out-of-order
+  completion: $+$WAW (ROB). Out-of-order issue: $+$WAR (renaming, window, ROB).
+  Tomasulo renames; speculation commits in order.
+  \item \textbf{VLIW}: the compiler packs operations (unrolling, software
+  pipelining, trace scheduling); simple hardware, low power; nops increase code
+  size; no binary compatibility.
+\end{itemize}
+
+\cs{Multithreading}
+Per-thread PC and registers. \textbf{Coarse}: switch on long stalls (refill
+cost). \textbf{Fine}: switch every cycle; hides short stalls, slows each thread.
+\textbf{SMT}: issue from several threads \emph{in the same cycle}: TLP $+$ ILP;
+fills horizontal waste.
+
+\cs{Coherence}
+Coherent: (1) a processor reads back its own write, (2) others' writes are seen
+eventually, (3) writes are serialized. Gives migration and replication.
+\textbf{Snooping}: broadcast bus, every cache watches; small SMPs.
+\textbf{Directory}: per block a state (U/S/M) $+$ sharer bit vector at the home
+node; point to point; scales. Write invalidate (used) vs.\ write update.
+{\scriptsize
+\begin{tabularx}{\linewidth}{@{}lX@{}}
+\toprule
+Read miss & I$\to$S (MESI: E if no other copy) \\
+Write & I/S$\to$M; invalidate other copies \\
+Write in E & E$\to$M \textbf{silent} (no bus) \\
+Snooped read & M$\to$S (flush), E$\to$S \\
+Snooped write & M (flush), E, S $\to$ I \\
+Evict M & write back \\
+\bottomrule
+\end{tabularx}}
+\textbf{Purpose of E}: avoid a second bus transaction when a thread writes a line
+it read. Read-then-write of private $Y$: MSI 2 transactions, MESI 1. False sharing:
+different words in one block $\to$ pad.
+\textbf{Review answers}: renaming removes WAR and WAW; SMT $=$ TLP $+$ ILP; MISD is
+unused; VLIW relies on the compiler.
+
+\cs{Exam checklist}
+\begin{itemize}
+  \item ns vs.\ cycles; ms $\to\times10^6$ ns; bytes vs.\ words vs.\ bits.
+  \item $F$ in Amdahl is a fraction of \emph{time}.
+  \item Count the instruction fetch in accesses/instr; local vs.\ global $\MR$.
+  \item Branch offset counts words from PC$+4$.
+  \item State the initial cache/TLB/frame contents in traces.
+\end{itemize}
+
+\end{multicols*}
+
+\clearpage
+\noindent\colorbox{black!12}{\parbox{\dimexpr\linewidth-2\fboxsep}{\bfseries\small WORKED TRACES (lecturer's review and course examples)}}
+
+\medskip
+\noindent\textbf{A. Pipeline diagrams} (5-stage, write first half / read second half; \textit{st} $=$ STALL; stalled instruction waits in ID, the one behind waits in IF).
+Code: \tw{(1) lw \$t0,0(\$t2); (2) lw \$t1,4(\$t4); (3) add \$t3,\$t0,\$t1; (4) sw \$t3,8(\$t2); (5) lw \$t0,12(\$t4); (6) add \$t3,\$t0,\$t1; (7) sw \$t3,16(\$t2)}.
+
+\noindent\textbf{No forwarding: 19 cycles, 8 stalls} (consumer's ID in the cycle of the producer's WB or later).
+\begin{center}\footnotesize\setlength{\tabcolsep}{2.4pt}
+\begin{tabular}{@{}lccccccccccccccccccc@{}}
+\toprule
+Instruction & 1 & 2 & 3 & 4 & 5 & 6 & 7 & 8 & 9 & 10 & 11 & 12 & 13 & 14 & 15 & 16 & 17 & 18 & 19 \\
+\midrule
+(1) \texttt{lw \$t0,0(\$t2)} & IF & ID & EX & MEM & WB &  &  &  &  &  &  &  &  &  &  &  &  &  &  \\
+(2) \texttt{lw \$t1,4(\$t4)} &  & IF & ID & EX & MEM & WB &  &  &  &  &  &  &  &  &  &  &  &  &  \\
+(3) \texttt{add \$t3,\$t0,\$t1} &  &  & IF & ID & \textit{st} & \textit{st} & EX & MEM & WB &  &  &  &  &  &  &  &  &  &  \\
+(4) \texttt{sw \$t3,8(\$t2)} &  &  &  & IF & \textit{st} & \textit{st} & ID & \textit{st} & \textit{st} & EX & MEM & WB &  &  &  &  &  &  &  \\
+(5) \texttt{lw \$t0,12(\$t4)} &  &  &  &  &  &  & IF & \textit{st} & \textit{st} & ID & EX & MEM & WB &  &  &  &  &  &  \\
+(6) \texttt{add \$t3,\$t0,\$t1} &  &  &  &  &  &  &  &  &  & IF & ID & \textit{st} & \textit{st} & EX & MEM & WB &  &  &  \\
+(7) \texttt{sw \$t3,16(\$t2)} &  &  &  &  &  &  &  &  &  &  & IF & \textit{st} & \textit{st} & ID & \textit{st} & \textit{st} & EX & MEM & WB \\
+\bottomrule
+\end{tabular}
+\end{center}
+\noindent\textbf{Forwarding: 13 cycles, 2 stalls} (only load-use at distance 1). Best legal reordering (1)(2)(3)(5)(4)(6)(7): 12 cycles; with renaming of (5)--(7): 11.
+\begin{center}\footnotesize\setlength{\tabcolsep}{2.4pt}
+\begin{tabular}{@{}lccccccccccccc@{}}
+\toprule
+Instruction & 1 & 2 & 3 & 4 & 5 & 6 & 7 & 8 & 9 & 10 & 11 & 12 & 13 \\
+\midrule
+(1) \texttt{lw \$t0,0(\$t2)} & IF & ID & EX & MEM & WB &  &  &  &  &  &  &  &  \\
+(2) \texttt{lw \$t1,4(\$t4)} &  & IF & ID & EX & MEM & WB &  &  &  &  &  &  &  \\
+(3) \texttt{add \$t3,\$t0,\$t1} &  &  & IF & ID & \textit{st} & EX & MEM & WB &  &  &  &  &  \\
+(4) \texttt{sw \$t3,8(\$t2)} &  &  &  & IF & \textit{st} & ID & EX & MEM & WB &  &  &  &  \\
+(5) \texttt{lw \$t0,12(\$t4)} &  &  &  &  &  & IF & ID & EX & MEM & WB &  &  &  \\
+(6) \texttt{add \$t3,\$t0,\$t1} &  &  &  &  &  &  & IF & ID & \textit{st} & EX & MEM & WB &  \\
+(7) \texttt{sw \$t3,16(\$t2)} &  &  &  &  &  &  &  & IF & \textit{st} & ID & EX & MEM & WB \\
+\bottomrule
+\end{tabular}
+\end{center}
+\begin{multicols}{2}
+\noindent\textbf{B. One 4-way set}, refs \tw{0 1 2 3 0 4 1 0 5 2 3 0} (fill ways 0--3; tree bits $b_0b_1b_2$ from 000; Clock gives new blocks bit 1). M(victim), H.
+
+{\footnotesize\setlength{\tabcolsep}{1.6pt}
+\begin{tabular}{@{}lcccccccccccc@{}}
+\toprule
+Ref & 0 & 1 & 2 & 3 & 0 & 4 & 1 & 0 & 5 & 2 & 3 & 0 \\
+\midrule
+LRU & M & M & M & M & H & M1 & M2 & H & M3 & M4 & M1 & H \\
+FIFO & M & M & M & M & H & M0 & H & M1 & M2 & M3 & M4 & H \\
+Tree & M & M & M & M & H & M2 & H & H & M3 & M1 & M4 & H \\
+bits & 110 & 100 & 001 & 000 & 110 & 011 & 101 & 111 & 010 & 100 & 001 & 111 \\
+Clock & M & M & M & M & H & M0 & H & M2 & M3 & M1 & M4 & H \\
+\bottomrule
+\end{tabular}}
+
+LRU 9, FIFO 9, Tree 8, Clock 9 misses.
+
+\medskip
+\noindent\textbf{C. Page replacement}, 3 frames, \tw{1 2 1 1 3 2 1 4 3 1 1 2 4 1 5 6 2 1}; F(victim).
+
+{\footnotesize\setlength{\tabcolsep}{1.3pt}
+\begin{tabular}{@{}l*{18}{c}@{}}
+\toprule
+& 1&2&1&1&3&2&1&4&3&1&1&2&4&1&5&6&2&1\\
+\midrule
+FIFO&F&F&&&F&&&F1&&F2&&F3&&&F4&F1&&F2\\
+LRU&F&F&&&F&&&F3&F2&&&F4&F3&&F2&F4&F1&F5\\
+OPT&F&F&&&F&&&F2&&&&F3&&&F4&F5&&\\
+\bottomrule
+\end{tabular}}
+
+FIFO 9, LRU 11, OPT 7 (Clock 9).
+
+\columnbreak
+\noindent\textbf{D. Coherence trace}, 3 CPUs, $X$ uncached; states P1 P2 P3.
+
+{\footnotesize
+\begin{tabular}{@{}lllll@{}}
+\toprule
+Access & MSI & MSI bus & MESI & MESI bus \\
+\midrule
+P1 rd & S I I & BusRd & E I I & BusRd \\
+P2 rd & S S I & BusRd & S S I & BusRd \\
+P1 wr & M I I & invalidate & M I I & invalidate \\
+P3 rd & S I S & BusRd, P1 flush & S I S & same \\
+P2 wr & I M I & write miss & I M I & same \\
+P1 rd & S S I & BusRd, P2 flush & S S I & same \\
+\bottomrule
+\end{tabular}}
+
+Private $Y$ read then written: MSI BusRd $+$ invalidate (2); MESI BusRd (E) then silent E$\to$M (1).
+
+\medskip
+\noindent\textbf{E. MIPS encodings} (fields; hex)\\
+{\footnotesize
+\tw{add \$t0,\$s1,\$s2}: 0 17 18 8 0 0x20 $=$ \tw{0x02324020}\\
+\tw{slt \$t0,\$s1,\$s2}: 0 17 18 8 0 0x2a $=$ \tw{0x0232402A}\\
+\tw{srl \$t1,\$s3,4}: 0 0 19 9 4 0x02 $=$ \tw{0x00134902}\\
+\tw{lw \$t0,16(\$t1)}: 0x23 9 8 16 $=$ \tw{0x8D280010}\\
+\tw{sw \$ra,4(\$sp)}: 0x2b 29 31 4 $=$ \tw{0xAFBF0004}\\
+\tw{beq \$s0,\$s1,256}: 4 16 17 256 $=$ \tw{0x12110100}\\
+\tw{jal 0x00400200}: 3, addr \tw{0x0100080} $=$ \tw{0x0C100080}\\
+\tw{0x1520FFFC} $=$ \tw{bne \$t1,\$zero,-4}: target PC$+4-16$.}
+\end{multicols}
+\end{document}
