@@ -1,0 +1,441 @@
+% ============================================================================
+\section{Introduction}
+\label{sec:intro}
+
+This section covers the quantitative tools from the introduction lecture: how to
+measure time and throughput, the CPU equation, instruction types and CPI, and
+Amdahl's Law.
+
+% ----------------------------------------------------------------------------
+\subsection{What to know}
+
+\subsubsection{Time and throughput}
+\begin{definition}[Latency and throughput]
+\textbf{Latency} (execution time, response time) is the time to finish
+\emph{one} task. \textbf{Throughput} (bandwidth) is the number of tasks
+finished per unit time.
+\end{definition}
+\begin{itemize}[leftmargin=*]
+  \item If a machine runs one task at a time, throughput $=1/\text{latency}$.
+  With overlap (several tasks in flight: pipelining, multiple cores, more
+  passengers per plane) throughput can rise while latency stays the same or
+  even gets worse.
+  \item \textbf{Elapsed (wall-clock) time} includes I/O and other programs.
+  \textbf{CPU time} $=$ user CPU time $+$ system CPU time; it excludes waiting.
+  \item Unix \texttt{time}: \texttt{90.7u 12.9s 2:39 65\%} means
+  $(90.7+12.9)/159=65\%$ of the elapsed time was CPU time. With several
+  threads on several cores the percentage can exceed 100\%.
+\end{itemize}
+
+\subsubsection{Performance and speedup}
+\[
+  \text{Performance}=\frac{1}{\text{ExTime}}\qquad
+  \text{Speedup of A over B}=\frac{\text{Perf}_A}{\text{Perf}_B}
+  =\frac{\text{ExTime}_B}{\text{ExTime}_A}=\frac{\text{old time}}{\text{new time}}
+\]
+``X is $n\%$ faster than Y'' means
+$\dfrac{\text{ExTime}_Y}{\text{ExTime}_X}=1+\dfrac{n}{100}$, so
+$n=100\,\dfrac{\text{ExTime}_Y-\text{ExTime}_X}{\text{ExTime}_X}$ (divide by
+the time of the \emph{faster} machine).
+
+\subsubsection{The CPU equation}
+\begin{theorem}[CPU time]
+\[
+  T=\frac{\text{Instructions}}{\text{Program}}\times
+    \frac{\text{Cycles}}{\text{Instruction}}\times
+    \frac{\text{Seconds}}{\text{Cycle}}
+   =I\times\CPI\times C=\frac{I\times\CPI}{f}.
+\]
+\end{theorem}
+\begin{center}
+\begin{tabular}{@{}lccc@{}}
+\toprule
+Affects $\dots$ & $I$ & $\CPI$ & $C$ \\
+\midrule
+Program, compiler, ISA & X & X & \\
+Organization (CPU design) & & X & X \\
+Technology (VLSI) & & & X \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\subsubsection{Instruction types and CPI}
+\begin{prop}[CPI of an instruction mix]
+With $I_i$ instructions of class $i$, each taking $\CPI_i$ cycles, and
+frequency $F_i=I_i/I$:
+\[
+  \text{Cycles}=\sum_i \CPI_i\,I_i,\qquad
+  \CPI=\frac{\text{Cycles}}{I}=\sum_i \CPI_i\,F_i,
+\]
+\[
+  \text{fraction of time in class } i=\frac{\CPI_i\,F_i}{\CPI}.
+\]
+\end{prop}
+\begin{remark}
+CPI is an \emph{average}, so it depends on the mix. A change that removes cheap
+instructions can \emph{raise} the CPI while lowering the time: always compare
+total cycles or time, never CPI or instruction count on their own.
+\end{remark}
+
+\subsubsection{Amdahl's Law}
+\begin{theorem}[Amdahl's Law]
+If an enhancement speeds up a fraction $F$ of the \emph{original execution
+time} by a factor $S$, and the rest is unchanged,
+\[
+  \text{ExTime}_{new}=\text{ExTime}_{old}\left[(1-F)+\frac FS\right],\qquad
+  \text{Speedup}=\frac{1}{(1-F)+\dfrac FS}\;\le\;\frac{1}{1-F}.
+\]
+\end{theorem}
+\begin{itemize}[leftmargin=*]
+  \item \textbf{Several disjoint enhancements} (every $F_i$ a fraction of the
+  original time):
+  $\text{Speedup}=\dfrac{1}{(1-\sum F_i)+\sum F_i/S_i}$.
+  \item \textbf{Parallel processors}: with parallel fraction $p$ on $N$
+  processors, $\text{Speedup}=\dfrac{1}{(1-p)+p/N}\le\dfrac1{1-p}$.
+  \item \textbf{Target speedup $T$}: $S=\dfrac{F}{1/T-(1-F)}$; impossible when
+  $T\ge1/(1-F)$. Required fraction: $F=\dfrac{1-1/T}{1-1/S}$.
+  \item \textbf{$F$ from an instruction mix}: $F=\CPI_i F_i/\CPI$, the share of
+  \emph{time}, not of instructions.
+  \item \textbf{$f'$ measured after the enhancement} (share of the \emph{new}
+  time spent in enhanced mode): $\text{Speedup}=(1-f')+f'S$, and the original
+  fraction is $F=f'S/\big((1-f')+f'S\big)$.
+  \item \textbf{Enhancement that slows the clock} by a factor $k$:
+  $\text{Speedup}=\dfrac{1}{\big[(1-F)+F/S\big]\,k}$.
+\end{itemize}
+
+% ----------------------------------------------------------------------------
+\subsection{Common traps}
+\begin{enumerate}[leftmargin=*]
+  \item Speedup is old time over new time, never the reverse; a speedup below 1
+  is a slowdown.
+  \item ``$n\%$ faster'' divides by the faster time: 10~s vs.\ 8~s is 25\%
+  faster, while 8~s vs.\ 10~s is 20\% \emph{less time}.
+  \item Converting clock rate: 2.5~GHz is a 0.4~ns cycle. Keep $f$ in Hz and
+  $T$ in seconds until the last step.
+  \item A higher clock rate or a lower CPI on its own does not mean faster; check
+  all three factors of $I\times\CPI\times C$.
+  \item In Amdahl's Law, $F$ is a fraction of \emph{time}. Given a mix, convert
+  with $\CPI_iF_i/\CPI$ first.
+  \item A fraction measured on the \emph{enhanced} machine is not the $F$ of the
+  formula; use $(1-f')+f'S$.
+  \item Cross-check every Amdahl answer with the CPU equation when you can:
+  same $I$ and clock $\Rightarrow$ speedup $=\CPI_{old}/\CPI_{new}$.
+\end{enumerate}
+
+% ----------------------------------------------------------------------------
+\subsection{Lecturer's review questions}
+From the lecturer's review slides (\texttt{Review\_final\_2026.pdf}), with worked answers.
+
+\begin{exercise}[Lecturer 1]\label{l:perf1}
+In a program's execution time, multiplication instructions take 60\% and division
+instructions 30\%. Multiplication can be made up to $6\times$ faster and division up
+to $12\times$ faster. To make the computer $2\times$ faster by improving only
+\emph{one} component, which component is selected?
+(a) multiplication; (b) division; (c) both a and b are correct; (d) both a and b are
+wrong.
+\end{exercise}
+\begin{solution}
+\textbf{(a)}. Multiplication: $\dfrac{1}{0.4+0.6/6}=\dfrac{1}{0.5}=2.0$, which
+reaches the target. Division: $\dfrac{1}{0.7+0.3/12}=\dfrac{1}{0.725}=1.38$; even
+$S\to\infty$ gives only $1/0.7=1.43<2$.
+\end{solution}
+
+\begin{exercise}[Lecturer 2]
+If both multiplication and division are improved, the new computer is faster by:
+(1) 4.000; (2) 4.175; (3) 4.444; (4) none of the above.
+\end{exercise}
+\begin{solution}
+\textbf{(3)}: $\dfrac{1}{(1-0.6-0.3)+0.6/6+0.3/12}=\dfrac{1}{0.1+0.1+0.025}
+=\dfrac{1}{0.225}=4.444$.
+\end{solution}
+
+\begin{exercise}[Lecturer 3]
+A program of 4 million instructions runs on a 2.5~GHz CPU in 8~ms. The average CPI
+is: (a) 5; (b) 10; (c) 20; (d) none of the above.
+\end{exercise}
+\begin{solution}
+\textbf{(a)}: $\CPI=\dfrac{T\times f}{I}=\dfrac{8\times10^{-3}\times2.5\times10^9}
+{4\times10^6}=\dfrac{2\times10^7}{4\times10^6}=5$.
+\end{solution}
+
+\begin{exercise}[Lecturer 4]
+A new compiler produces 5 million instructions with CPI 2; the clock is unchanged.
+The speedup is: (a) 1.5; (b) 4; (c) 2; (d) none of the above.
+\end{exercise}
+\begin{solution}
+\textbf{(c)}: $T'=\dfrac{5\times10^6\times2}{2.5\times10^9}=4$~ms, speedup
+$=8/4=2$. More instructions, but far fewer cycles ($10^7$ vs.\ $2\times10^7$).
+\end{solution}
+
+% ----------------------------------------------------------------------------
+\subsection{Exam-style questions}
+Solutions are in Section~\ref{sec:intro-sol}.
+
+\begin{exercise}[Latency vs.\ throughput]\label{q:intro-lat}
+Web server A handles one request at a time and takes 2~ms per request. Web
+server B handles 4 requests at the same time, each taking 5~ms.
+\begin{enumerate}[label=(\alph*),leftmargin=*]
+  \item Which server has the lower latency, and by what factor?
+  \item Find the throughput of each server in requests per second. Which is
+  higher, and by what percentage?
+  \item 3000 requests arrive together. How long does each server take to finish
+  all of them?
+  \item Which server would you pick for one interactive user, and which for a
+  busy data centre? Why?
+  \item A program run on B reports \texttt{12.0u 2.0s 0:07 200\%}. Explain how
+  the CPU percentage can exceed 100\%.
+\end{enumerate}
+\end{exercise}
+
+\begin{exercise}[Three design options]\label{q:intro-design}
+A program executes $4\times10^9$ instructions with $\CPI=1.6$ on a 2~GHz
+processor. The design team has two options:
+\begin{itemize}[leftmargin=*]
+  \item \textbf{Option A}: a deeper pipeline raises the clock to 2.5~GHz, but
+  the CPI rises to 1.9.
+  \item \textbf{Option B}: new instructions cut the instruction count by 15\%;
+  the clock stays at 2~GHz but the CPI rises to 1.75.
+\end{itemize}
+\begin{enumerate}[label=(\alph*),leftmargin=*]
+  \item Find the CPU time of the original design and of each option.
+  \item Which option is better? Give its speedup over the original and say how
+  many percent faster it is.
+  \item What CPI would option A need to match option B?
+  \item Which factors of the CPU equation does each option change, and which
+  part of the design (compiler, ISA, organization, technology) is responsible?
+\end{enumerate}
+\end{exercise}
+
+\begin{exercise}[Instruction classes]\label{q:intro-mix}
+A 2~GHz processor runs a program of $5\times10^9$ instructions with this mix:
+\begin{center}
+\begin{tabular}{@{}lcc@{}}
+\toprule
+Class & Frequency & CPI \\
+\midrule
+ALU & 40\% & 1 \\
+Load/Store & 30\% & 3 \\
+Branch & 20\% & 2 \\
+Floating point & 10\% & 6 \\
+\bottomrule
+\end{tabular}
+\end{center}
+\begin{enumerate}[label=(\alph*),leftmargin=*]
+  \item Find the average CPI.
+  \item Find the fraction of execution time spent in each class.
+  \item Find the CPU time and the MIPS rating.
+  \item A compiler optimization removes half of the branches and changes nothing
+  else. Find the new instruction count, CPI and CPU time. Explain why the CPI
+  goes \emph{up} although the program gets faster.
+\end{enumerate}
+\end{exercise}
+
+\begin{exercise}[Choosing an enhancement]\label{q:intro-choose}
+Use the original mix of Exercise~\ref{q:intro-mix}. Two improvements are
+proposed:
+\begin{itemize}[leftmargin=*]
+  \item \textbf{E1}: a faster FP unit lowers the FP CPI from 6 to 2.
+  \item \textbf{E2}: a better cache lowers the load/store CPI from 3 to 2.
+\end{itemize}
+\begin{enumerate}[label=(\alph*),leftmargin=*]
+  \item For each, find $F$ and $S$ and the overall speedup with Amdahl's Law.
+  \item Check both answers with the CPU equation.
+  \item Only 10\% of the instructions are FP but 30\% are loads/stores. Explain
+  why E1 still wins.
+  \item Find the speedup with both enhancements, with Amdahl's Law and with the
+  CPU equation.
+\end{enumerate}
+\end{exercise}
+
+\begin{exercise}[Limits and targets]\label{q:intro-limit}
+A program spends 60\% of its execution time in matrix multiplication.
+\begin{enumerate}[label=(\alph*),leftmargin=*]
+  \item An accelerator runs matrix multiplication $20\times$ faster. Find the
+  overall speedup.
+  \item What is the largest overall speedup any accelerator could give?
+  \item How fast must the accelerator be for an overall speedup of 2.4?
+  \item Can an overall speedup of 2.5 be reached? Explain.
+  \item What fraction of the time would have to be accelerated by $20\times$ to
+  reach an overall speedup of 4?
+\end{enumerate}
+\end{exercise}
+
+\begin{exercise}[Fraction measured after the enhancement]\label{q:intro-after}
+After a SIMD unit is added (it runs vectorizable code $10\times$ faster), a
+profiler on the \emph{new} machine shows that 40\% of the execution time is
+spent in SIMD code.
+\begin{enumerate}[label=(\alph*),leftmargin=*]
+  \item Find the overall speedup due to the SIMD unit.
+  \item What fraction of the \emph{original} execution time was vectorizable?
+  \item A student plugs $F=0.4$, $S=10$ into Amdahl's Law. What does the
+  student get, and why is it wrong?
+  \item The SIMD unit is improved to $20\times$. Find the speedup over the
+  original machine (without SIMD).
+\end{enumerate}
+\end{exercise}
+
+\begin{exercise}[Enhancement with a clock penalty]\label{q:intro-clock}
+An enhancement speeds up 30\% of the execution time by $4\times$, but its extra
+logic makes the clock cycle 5\% longer.
+\begin{enumerate}[label=(\alph*),leftmargin=*]
+  \item Find the overall speedup with and without the clock penalty.
+  \item How much longer could the clock cycle become before the enhancement
+  stops paying off?
+\end{enumerate}
+\end{exercise}
+
+\begin{exercise}[Amdahl's Law for multiprocessors]\label{q:intro-par}
+90\% of a program can run in parallel.
+\begin{enumerate}[label=(\alph*),leftmargin=*]
+  \item Find the speedup on 8 and on 64 processors.
+  \item What is the speedup limit?
+  \item How many processors are needed for a speedup of 8?
+  \item Comment on the efficiency (speedup per processor) in (a).
+\end{enumerate}
+\end{exercise}
+
+\begin{exercise}[True or false]\label{q:intro-tf}
+Answer and give a one-line reason.
+\begin{enumerate}[label=(\alph*),leftmargin=*]
+  \item A processor with a higher clock rate is always faster.
+  \item Of two code sequences for the same task, the one with the lower CPI is
+  always faster.
+  \item On a machine that runs one task at a time, halving the latency doubles
+  the throughput.
+  \item In Amdahl's Law, $F$ can be taken as the fraction of instructions that
+  benefit.
+  \item With enough money, any overall speedup can be reached by speeding up
+  only part of a program.
+  \item If X is 25\% faster than Y, then Y takes 25\% more time than X.
+\end{enumerate}
+\end{exercise}
+
+% ----------------------------------------------------------------------------
+\subsection{Solutions}
+\label{sec:intro-sol}
+
+\begin{noot}{Exercise~\ref{q:intro-lat}}
+\begin{enumerate}[label=(\alph*),leftmargin=*]
+  \item A: 2~ms, B: 5~ms. A has $5/2=2.5\times$ lower latency.
+  \item A: $1/0.002=500$ requests/s. B: $4/0.005=800$ requests/s. B has
+  $800/500=1.6\times$, i.e.\ 60\% higher throughput.
+  \item A: $3000\times2\text{ ms}=6$~s. B: $3000/4=750$ rounds of 5~ms
+  $=3.75$~s.
+  \item One interactive user sees only latency, so A. A data centre with many
+  users cares about requests served per second, so B. Latency and throughput can
+  rank machines in opposite orders.
+  \item CPU time $=12.0+2.0=14$~s over an elapsed time of 7~s gives
+  $14/7=200\%$. CPU time is summed over all cores, so two threads running on two
+  cores at the same time give 2~s of CPU time per second of wall-clock time.
+\end{enumerate}
+\end{noot}
+
+\begin{noot}{Exercise~\ref{q:intro-design}}
+\begin{enumerate}[label=(\alph*),leftmargin=*]
+  \item Original: $T=\dfrac{4\times10^9\times1.6}{2\times10^9}=3.2$~s.\\
+  A: $T_A=\dfrac{4\times10^9\times1.9}{2.5\times10^9}=3.04$~s.\\
+  B: $I_B=0.85\times4\times10^9=3.4\times10^9$,
+  $T_B=\dfrac{3.4\times10^9\times1.75}{2\times10^9}=2.975$~s.
+  \item B is better. Speedup $=3.2/2.975=1.076$, so B is 7.6\% faster than the
+  original (A gives $3.2/3.04=1.053$). B is also
+  $100\,(3.04-2.975)/2.975=2.2\%$ faster than A.
+  \item $\CPI_A=\dfrac{T_B\times f_A}{I}=\dfrac{2.975\times2.5\times10^9}{4\times10^9}=1.859$.
+  \item A changes $C$ (shorter cycle) and CPI: organization. B changes $I$
+  and CPI: ISA (and the compiler that uses the new instructions).
+\end{enumerate}
+\end{noot}
+
+\begin{noot}{Exercise~\ref{q:intro-mix}}
+\begin{enumerate}[label=(\alph*),leftmargin=*]
+  \item $\CPI=0.4(1)+0.3(3)+0.2(2)+0.1(6)=0.4+0.9+0.4+0.6=2.3$.
+  \item ALU $0.4/2.3=17.4\%$, load/store $0.9/2.3=39.1\%$, branch
+  $0.4/2.3=17.4\%$, FP $0.6/2.3=26.1\%$.
+  \item $T=\dfrac{5\times10^9\times2.3}{2\times10^9}=5.75$~s.
+  $\text{MIPS}=\dfrac{2\times10^9}{2.3\times10^6}=869.6$.
+  \item Branches drop from $1\times10^9$ to $0.5\times10^9$, so
+  $I'=4.5\times10^9$. Cycles $=11.5\times10^9-0.5\times10^9\times2=10.5\times10^9$.
+  $\CPI'=10.5/4.5=2.33$, $T'=10.5\times10^9/(2\times10^9)=5.25$~s, a speedup of
+  $5.75/5.25=1.095$. The removed branches (CPI 2) were cheaper than the average
+  (2.3), so the remaining mix is more expensive per instruction, but there are
+  fewer cycles in total. (MIPS also falls, to 857, although the program is
+  faster.)
+\end{enumerate}
+\end{noot}
+
+\begin{noot}{Exercise~\ref{q:intro-choose}}
+\begin{enumerate}[label=(\alph*),leftmargin=*]
+  \item E1: $F=0.6/2.3=0.261$, $S=6/2=3$:
+  $\text{Speedup}=\dfrac{1}{0.739+0.261/3}=\dfrac{1}{0.739+0.087}=1.21$.\\
+  E2: $F=0.9/2.3=0.391$, $S=3/2=1.5$:
+  $\text{Speedup}=\dfrac{1}{0.609+0.391/1.5}=\dfrac{1}{0.609+0.261}=1.15$.
+  \item E1: $\CPI'=2.3-0.1(6-2)=1.9$, $2.3/1.9=1.21$.
+  E2: $\CPI'=2.3-0.3(3-2)=2.0$, $2.3/2.0=1.15$. Both match.
+  \item What matters is the time saved per instruction,
+  $F_i\,(\CPI_{old}-\CPI_{new})$: E1 saves $0.1\times4=0.4$ cycles, E2 saves
+  $0.3\times1=0.3$ cycles. FP instructions are rare but expensive, so they take
+  26\% of the time.
+  \item Amdahl: $\dfrac{1}{(1-0.261-0.391)+0.261/3+0.391/1.5}
+  =\dfrac{1}{0.348+0.087+0.261}=\dfrac{1}{0.696}=1.44$.
+  CPU equation: $\CPI'=2.3-0.4-0.3=1.6$, $2.3/1.6=1.44$.
+\end{enumerate}
+\end{noot}
+
+\begin{noot}{Exercise~\ref{q:intro-limit}}
+\begin{enumerate}[label=(\alph*),leftmargin=*]
+  \item $\dfrac{1}{0.4+0.6/20}=\dfrac{1}{0.43}=2.33$.
+  \item $S\to\infty$: $1/(1-0.6)=2.5$.
+  \item $S=\dfrac{0.6}{1/2.4-0.4}=\dfrac{0.6}{0.01667}=36$.
+  \item No: 2.5 is the limit. It would need $1/2.5=0.4=(1-F)+F/S$, i.e.\
+  $F/S=0$, an infinitely fast accelerator.
+  \item $F=\dfrac{1-1/4}{1-1/20}=\dfrac{0.75}{0.95}=0.789$: about 79\% of the time.
+\end{enumerate}
+\end{noot}
+
+\begin{noot}{Exercise~\ref{q:intro-after}}
+\begin{enumerate}[label=(\alph*),leftmargin=*]
+  \item Take the new time as 1: 0.6 is non-SIMD and 0.4 is SIMD. Without the
+  unit the SIMD part would take $0.4\times10=4$, so the old time is
+  $0.6+4=4.6$. Speedup $=4.6$.
+  \item $F=4/4.6=0.870$: 87\% of the original time.
+  \item $1/(0.6+0.04)=1.56$. The 40\% is a share of the \emph{new}, shorter
+  time; Amdahl's $F$ must be a share of the \emph{old} time. Check:
+  $1/(0.130+0.870/10)=1/0.217=4.6$.
+  \item $F=20/23$: $\dfrac{1}{3/23+(20/23)/20}=\dfrac{1}{4/23}=5.75$.
+\end{enumerate}
+\end{noot}
+
+\begin{noot}{Exercise~\ref{q:intro-clock}}
+\begin{enumerate}[label=(\alph*),leftmargin=*]
+  \item Without the penalty: new time $=0.7+0.3/4=0.775$, speedup
+  $1/0.775=1.29$. With it: $0.775\times1.05=0.814$, speedup $1.23$.
+  \item It pays off while $0.775\,k<1$, i.e.\ $k<1/0.775=1.29$: the cycle can
+  grow by up to about 29\%.
+\end{enumerate}
+\end{noot}
+
+\begin{noot}{Exercise~\ref{q:intro-par}}
+\begin{enumerate}[label=(\alph*),leftmargin=*]
+  \item $N=8$: $\dfrac{1}{0.1+0.9/8}=\dfrac{1}{0.2125}=4.71$.
+  $N=64$: $\dfrac{1}{0.1+0.9/64}=\dfrac{1}{0.1141}=8.77$.
+  \item $1/0.1=10$, however many processors.
+  \item $1/8=0.125=0.1+0.9/N\Rightarrow N=0.9/0.025=36$.
+  \item Efficiency: $4.71/8=59\%$ on 8 processors but only $8.77/64=14\%$ on 64.
+  The serial 10\% dominates as $N$ grows.
+\end{enumerate}
+\end{noot}
+
+\begin{noot}{Exercise~\ref{q:intro-tf}}
+\begin{enumerate}[label=(\alph*),leftmargin=*]
+  \item False: time is $I\times\CPI/f$; a higher CPI (Exercise~\ref{q:intro-design},
+  option A) or a larger $I$ can cancel the faster clock.
+  \item False: the lower-CPI sequence may execute more instructions; compare
+  total cycles.
+  \item True: throughput $=1/\text{latency}$ when tasks do not overlap.
+  \item False: $F$ is a fraction of execution time; convert with
+  $\CPI_iF_i/\CPI$.
+  \item False: the speedup is bounded by $1/(1-F)$.
+  \item True: $\text{ExTime}_Y/\text{ExTime}_X=1.25$. (But X takes 20\% less
+  time than Y.)
+\end{enumerate}
+\end{noot}
+

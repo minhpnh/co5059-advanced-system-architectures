@@ -1,0 +1,454 @@
+% ============================================================================
+\section{Pipelining}
+\label{sec:pipe}
+
+Everything on pipelining: the idea, the 5-stage MIPS pipeline and its timing,
+structural, data and control hazards, forwarding, compiler scheduling and branch
+schemes.
+
+% ----------------------------------------------------------------------------
+\subsection{What to know}
+
+\subsubsection{The idea}
+\begin{itemize}[leftmargin=*]
+  \item \textbf{Pipelining} overlaps the execution of several instructions, each in
+  a different stage. It improves \textbf{throughput}, not the latency of one
+  instruction (latency even grows a little from pipeline-register overhead).
+  \item The pipeline rate is limited by the \textbf{slowest stage}; unbalanced
+  stages and the time to fill and drain reduce the speedup. Ideal speedup $=$
+  number of stages.
+  \item Laundry: wash 30, dry 40, fold 20 min, 4 loads: sequential
+  $4\times90=360$ min, pipelined $30+4\times40+20=210$ min.
+\end{itemize}
+
+\subsubsection{The 5-stage MIPS pipeline}
+\begin{center}
+\small
+\begin{tabular}{@{}lll@{}}
+\toprule
+Stage & Work & Resource \\
+\midrule
+IF & fetch instruction at PC, PC $\leftarrow$ PC$+4$ & instruction memory \\
+ID & decode, read registers, sign-extend immediate & register file (read) \\
+EX & ALU operation or effective address & ALU \\
+MEM & load or store & data memory \\
+WB & write the result register & register file (write) \\
+\bottomrule
+\end{tabular}
+\end{center}
+Pipeline registers IF/ID, ID/EX, EX/MEM, MEM/WB hold each instruction's values
+between stages. The register file is \textbf{written in the first half} and
+\textbf{read in the second half} of a cycle. MIPS is easy to pipeline: all
+instructions are 32 bits, few formats with fixed register fields, memory operands
+only in loads and stores, aligned memory accesses.
+
+\subsubsection{Timing}
+\begin{itemize}[leftmargin=*]
+  \item \textbf{Clocked pipeline}, $k$ stages, $n$ instructions, $s$ stall cycles:
+  \[
+    \text{Cycles}=k+(n-1)+s,\qquad t_{clk}=\max_i t_i+t_{latch},\qquad
+    \text{Time}=\text{Cycles}\times t_{clk}.
+  \]
+  \item Non-pipelined time per instruction $=\sum_i t_i$ (single-cycle: the clock
+  is the longest instruction).
+  \item Speedup, balanced stages: $\dfrac{nk}{k+n-1}\to k$. With stalls:
+  \[
+    \CPI_{pipe}=1+\text{stall cycles per instruction},
+  \]
+  \[
+    \text{Speedup}=\frac{\CPI_{unpipe}}{\CPI_{pipe}}\times\frac{t_{clk,unpipe}}{t_{clk,pipe}}
+    =\frac{\text{depth}}{1+\text{stalls/instr}}.
+  \]
+  \item \textbf{Stages that hand over as soon as the next one is free} (the
+  lecturer's figure, no common clock): the first instruction takes $\sum t_i$, each
+  later one finishes $\max t_i$ later:
+  $T(n)=\sum_i t_i+(n-1)\max_i t_i$. An instruction waits in front of the slowest
+  stage for (slowest $-$ slowest earlier stage) longer than the instruction before it.
+\end{itemize}
+
+\subsubsection{Hazards}
+\begin{definition}[Hazards]
+A \textbf{hazard} prevents the next instruction from executing in its cycle.
+\textbf{Structural}: two instructions need the same hardware at once.
+\textbf{Data}: an instruction needs a result that is not ready.
+\textbf{Control}: the next PC depends on a branch not yet resolved.
+\end{definition}
+\begin{itemize}[leftmargin=*]
+  \item \textbf{Structural}: e.g.\ one memory port for instructions and data, so a
+  load stalls a later fetch. Fix: split I/D memories (caches) or duplicate the
+  resource. It may be accepted when rare and costly to remove.
+  \item \textbf{Data dependences}, $i$ before $j$:
+  \textbf{RAW} ($j$ reads what $i$ writes, true dependence),
+  \textbf{WAR} ($j$ writes what $i$ reads, anti-dependence),
+  \textbf{WAW} ($j$ writes what $i$ writes, output dependence).
+  \textbf{RAR is not a hazard} (nothing changes). In the in-order 5-stage pipeline
+  only RAW causes stalls: reads (ID) are early and writes (WB) late and in order.
+  WAR and WAW matter in out-of-order machines (Section~\ref{sec:mp}).
+\end{itemize}
+
+\begin{center}
+\small
+\begin{tabular}{@{}p{5cm}lp{6.2cm}@{}}
+\toprule
+Producer $\to$ consumer at distance $d$ & Stalls & Why \\
+\midrule
+No forwarding & $\max(0,3-d)$ & consumer's ID must be in the same cycle as producer's WB or later \\
+Forwarding, ALU $\to$ ALU & 0 & EX/MEM $\to$ EX ($d=1$), MEM/WB $\to$ EX ($d=2$) \\
+Forwarding, load $\to$ use, $d=1$ & 1 & data ready only at the end of MEM \\
+Forwarding, load $\to$ use, $d\ge2$ & 0 & MEM/WB $\to$ EX \\
+Forwarding, load $\to$ store data & 0 & MEM/WB $\to$ MEM \\
+\bottomrule
+\end{tabular}
+\end{center}
+\begin{itemize}[leftmargin=*]
+  \item \textbf{Forwarding} (bypassing, hardware): feed the ALU from the pipeline
+  registers instead of waiting for WB. The \textbf{load-use} hazard remains:
+  hardware \textbf{interlocks} detect it and stall 1 cycle.
+  \item \textbf{Compiler scheduling}: reorder independent instructions so no load is
+  followed directly by its use. Reordering must keep every RAW, WAR and WAW order;
+  if it cannot, rename registers.
+  \item \textbf{Drawing a diagram}: a stalled instruction waits in ID
+  (\textit{st} after ID); the one behind waits in IF (\textit{st} after IF); the
+  next instruction is fetched when the IF stage is free. Total cycles $=$ cycle of
+  the last WB.
+\end{itemize}
+
+\subsubsection{Control hazards}
+\begin{itemize}[leftmargin=*]
+  \item Branch penalty $=$ (stage that resolves the branch) $-1$: resolved in MEM
+  $\Rightarrow$ 3 cycles; with the zero test and target adder moved into ID
+  $\Rightarrow$ 1 cycle.
+  \item $\CPI=1+f_{branch}\times(\text{fraction penalized})\times\text{penalty}$.
+  \item Four alternatives: (1) \textbf{stall/flush} until resolved; (2)
+  \textbf{predict not taken}: keep fetching PC$+4$, squash if taken (only taken
+  branches pay); (3) \textbf{predict taken}: no gain in the 5-stage MIPS since the
+  target is known no earlier than the outcome; (4) \textbf{delayed branch}: the
+  instruction in the delay slot always executes.
+  \item Filling the delay slot: (A) from before the branch (best, always useful,
+  the branch must not depend on it); (B) from the target (useful when taken; must
+  be safe when not); (C) from the fall-through (useful when not taken; must be safe
+  when taken). Compilers fill about 60\% of slots, about 80\% of those usefully.
+  \item \textbf{Compiler techniques}: instruction scheduling, delay-slot filling,
+  static branch prediction, loop unrolling. \textbf{Hardware techniques}:
+  forwarding, interlocks, early branch resolution, dynamic branch prediction.
+\end{itemize}
+
+% ----------------------------------------------------------------------------
+\subsection{Common traps}
+\begin{enumerate}[leftmargin=*]
+  \item $n$ instructions take $k+n-1$ cycles, not $kn$ and not $n$.
+  \item The clock is the \emph{slowest} stage (plus latch overhead), not the average.
+  \item Without forwarding a dependence at distance 1 costs 2 stalls (not 3),
+  because of the split-cycle register file.
+  \item With forwarding only load-use at distance 1 stalls.
+  \item Stalls push every later instruction right: the instruction behind a stall
+  waits in IF.
+  \item When reordering, check WAR and WAW too: moving a load above an instruction
+  that still reads the old register value is wrong.
+  \item Forwarding is hardware; scheduling and delay slots are compiler techniques.
+\end{enumerate}
+
+% ----------------------------------------------------------------------------
+\subsection{Lecturer's review questions}
+
+\begin{exercise}[Lecturer 1]
+Choose the FALSE statement about techniques to reduce hazards \emph{using
+compilers}: (a) forwarding; (b) scheduling; (c) branch prediction; (d) branch delay
+slots.
+\end{exercise}
+\begin{solution}
+\textbf{(a)}: forwarding is a hardware datapath feature. Scheduling and delay-slot
+filling are done by the compiler, and branch prediction can be static (the compiler
+or ISA chooses the predicted direction).
+\end{solution}
+
+\begin{exercise}[Lecturer 2]
+Which data dependence is not a data hazard? (a) RAR; (b) RAW; (c) WAR; (d) WAW.
+\end{exercise}
+\begin{solution}
+\textbf{(a)}: two reads of the same register can happen in any order.
+\end{solution}
+
+\begin{exercise}[Lecturer 3]
+How long do 100 tasks take on an ideal 6-stage pipeline with 2~ns per stage?
+(a) 12~ns; (b) 200~ns; (c) 210~ns; (d) 212~ns.
+\end{exercise}
+\begin{solution}
+\textbf{(c)}: $(6+100-1)\times2=105\times2=210$~ns. (12~ns is the latency of one
+task; 200~ns ignores the fill.)
+\end{solution}
+
+\begin{exercise}[Lecturer 4 and 5]
+A 5-stage pipeline has stage times IF 5, ID 4, EX 5, MEM 10, WB 4~ns.
+(4) The total execution time of 3 consecutive instructions is: (a) 38; (b) 43;
+(c) 48; (d) 53~ns.
+(5) The stall time of the 4th instruction is: (a) 5; (b) 10; (c) 15~ns; (d) none of
+the above.
+\end{exercise}
+\begin{solution}
+The answer choices fit the model in which an instruction moves on as soon as the
+next stage is free (no common clock).
+\textbf{(4) (c) 48~ns}: the first instruction takes $5+4+5+10+4=28$~ns; MEM, the
+slowest stage, accepts one instruction every 10~ns, so each later instruction
+finishes 10~ns later: $28+2\times10=48$~ns.
+\begin{center}
+\small
+\begin{tabular}{@{}lccccc@{}}
+\toprule
+Instr. & IF & ID & EX & wait & MEM, WB \\
+\midrule
+1 & 0--5 & 5--9 & 9--14 & -- & 14--24, 24--28 \\
+2 & 5--10 & 10--14 & 14--19 & 5 & 24--34, 34--38 \\
+3 & 10--15 & 15--19 & 19--24 & 10 & 34--44, 44--48 \\
+4 & 15--20 & 20--24 & 24--29 & 15 & 44--54, 54--58 \\
+\bottomrule
+\end{tabular}
+\end{center}
+\textbf{(5) (c) 15~ns}: instructions arrive in front of MEM every 5~ns (the slowest
+earlier stage) but MEM takes 10~ns, so each one waits 5~ns longer than the one
+before: $0, 5, 10, 15$~ns.
+
+With a common clock instead, the cycle would be 10~ns and 3 instructions would take
+$(5+2)\times10=70$~ns, which is not among the choices.
+\end{solution}
+
+\begin{exercise}[Lecturer 6: pipeline diagrams]\label{l:pipe-code}
+The code runs on the 5-stage pipeline IF, ID, EX, MEM, WB:
+\begin{lstlisting}
+(1) lw   $t0, 0($t2)
+(2) lw   $t1, 4($t4)
+(3) add  $t3, $t0, $t1
+(4) sw   $t3, 8($t2)
+(5) lw   $t0, 12($t4)
+(6) add  $t3, $t0, $t1
+(7) sw   $t3, 16($t2)
+\end{lstlisting}
+\begin{enumerate}[label=(\alph*),leftmargin=*]
+  \item Without forwarding, fill in the pipeline table, writing STALL where needed.
+  \item Repeat with forwarding.
+  \item Reorder the instructions so they run on the forwarding pipeline with as few
+  stalls as possible.
+\end{enumerate}
+\end{exercise}
+\begin{solution}
+Dependences: RAW (1)$\to$(3) \texttt{\$t0}, (2)$\to$(3) \texttt{\$t1},
+(3)$\to$(4) \texttt{\$t3}, (5)$\to$(6) \texttt{\$t0}, (2)$\to$(6) \texttt{\$t1},
+(6)$\to$(7) \texttt{\$t3}; WAR (3)$\to$(5) on \texttt{\$t0}, (4)$\to$(6) on
+\texttt{\$t3}; WAW (1)$\to$(5), (3)$\to$(6). \textit{st} $=$ STALL.
+
+\textbf{(a) No forwarding}: a consumer's ID (register read) must be in the cycle of
+the producer's WB or later.
+\begin{center}\scriptsize\setlength{\tabcolsep}{1.1pt}
+\begin{tabular}{@{}lccccccccccccccccccc@{}}
+\toprule
+Instruction & 1 & 2 & 3 & 4 & 5 & 6 & 7 & 8 & 9 & 10 & 11 & 12 & 13 & 14 & 15 & 16 & 17 & 18 & 19 \\
+\midrule
+(1) \texttt{lw \$t0,0(\$t2)} & IF & ID & EX & MEM & WB &  &  &  &  &  &  &  &  &  &  &  &  &  &  \\
+(2) \texttt{lw \$t1,4(\$t4)} &  & IF & ID & EX & MEM & WB &  &  &  &  &  &  &  &  &  &  &  &  &  \\
+(3) \texttt{add \$t3,\$t0,\$t1} &  &  & IF & ID & \textit{st} & \textit{st} & EX & MEM & WB &  &  &  &  &  &  &  &  &  &  \\
+(4) \texttt{sw \$t3,8(\$t2)} &  &  &  & IF & \textit{st} & \textit{st} & ID & \textit{st} & \textit{st} & EX & MEM & WB &  &  &  &  &  &  &  \\
+(5) \texttt{lw \$t0,12(\$t4)} &  &  &  &  &  &  & IF & \textit{st} & \textit{st} & ID & EX & MEM & WB &  &  &  &  &  &  \\
+(6) \texttt{add \$t3,\$t0,\$t1} &  &  &  &  &  &  &  &  &  & IF & ID & \textit{st} & \textit{st} & EX & MEM & WB &  &  &  \\
+(7) \texttt{sw \$t3,16(\$t2)} &  &  &  &  &  &  &  &  &  &  & IF & \textit{st} & \textit{st} & ID & \textit{st} & \textit{st} & EX & MEM & WB \\
+\bottomrule
+\end{tabular}
+\end{center}
+(3) waits for \texttt{\$t1} (WB in 6); (4) waits for \texttt{\$t3} (WB in 9); (6)
+waits for \texttt{\$t0} (WB in 13); (7) waits for \texttt{\$t3} (WB in 16).
+\textbf{19 cycles, 8 stall cycles.}
+
+\textbf{(b) Forwarding}: only the two load-use pairs (2)$\to$(3) and (5)$\to$(6)
+stall, 1 cycle each; (3)$\to$(4) and (6)$\to$(7) are forwarded from EX/MEM.
+\begin{center}\scriptsize\setlength{\tabcolsep}{1.6pt}
+\begin{tabular}{@{}lccccccccccccc@{}}
+\toprule
+Instruction & 1 & 2 & 3 & 4 & 5 & 6 & 7 & 8 & 9 & 10 & 11 & 12 & 13 \\
+\midrule
+(1) \texttt{lw \$t0,0(\$t2)} & IF & ID & EX & MEM & WB &  &  &  &  &  &  &  &  \\
+(2) \texttt{lw \$t1,4(\$t4)} &  & IF & ID & EX & MEM & WB &  &  &  &  &  &  &  \\
+(3) \texttt{add \$t3,\$t0,\$t1} &  &  & IF & ID & \textit{st} & EX & MEM & WB &  &  &  &  &  \\
+(4) \texttt{sw \$t3,8(\$t2)} &  &  &  & IF & \textit{st} & ID & EX & MEM & WB &  &  &  &  \\
+(5) \texttt{lw \$t0,12(\$t4)} &  &  &  &  &  & IF & ID & EX & MEM & WB &  &  &  \\
+(6) \texttt{add \$t3,\$t0,\$t1} &  &  &  &  &  &  & IF & ID & \textit{st} & EX & MEM & WB &  \\
+(7) \texttt{sw \$t3,16(\$t2)} &  &  &  &  &  &  &  & IF & \textit{st} & ID & EX & MEM & WB \\
+\bottomrule
+\end{tabular}
+\end{center}
+\textbf{13 cycles, 2 stall cycles.}
+
+\textbf{(c) Reordering.} Moving (5) up between (2) and (3) looks attractive, but
+(5) overwrites \texttt{\$t0} before (3) reads the value loaded by (1): a WAR
+violation that changes the result. Keeping all dependences, (3) must follow both
+(1) and (2), and nothing independent can go between them, so one load-use stall
+remains. Swapping (4) and (5) removes the second one:
+\begin{center}\scriptsize\setlength{\tabcolsep}{1.6pt}
+\begin{tabular}{@{}lcccccccccccc@{}}
+\toprule
+Instruction & 1 & 2 & 3 & 4 & 5 & 6 & 7 & 8 & 9 & 10 & 11 & 12 \\
+\midrule
+(1) \texttt{lw \$t0,0(\$t2)} & IF & ID & EX & MEM & WB &  &  &  &  &  &  &  \\
+(2) \texttt{lw \$t1,4(\$t4)} &  & IF & ID & EX & MEM & WB &  &  &  &  &  &  \\
+(3) \texttt{add \$t3,\$t0,\$t1} &  &  & IF & ID & \textit{st} & EX & MEM & WB &  &  &  &  \\
+(5) \texttt{lw \$t0,12(\$t4)} &  &  &  & IF & \textit{st} & ID & EX & MEM & WB &  &  &  \\
+(4) \texttt{sw \$t3,8(\$t2)} &  &  &  &  &  & IF & ID & EX & MEM & WB &  &  \\
+(6) \texttt{add \$t3,\$t0,\$t1} &  &  &  &  &  &  & IF & ID & EX & MEM & WB &  \\
+(7) \texttt{sw \$t3,16(\$t2)} &  &  &  &  &  &  &  & IF & ID & EX & MEM & WB \\
+\bottomrule
+\end{tabular}
+\end{center}
+Order (1) (2) (3) (5) (4) (6) (7): \textbf{12 cycles, 1 stall}. If a free register
+may be used, rename \texttt{\$t0} in (5)--(6) to \texttt{\$t5} and \texttt{\$t3} in
+(6)--(7) to \texttt{\$t6}; then (5) can move up and there are no stalls:
+\begin{center}\scriptsize\setlength{\tabcolsep}{1.6pt}
+\begin{tabular}{@{}lccccccccccc@{}}
+\toprule
+Instruction & 1 & 2 & 3 & 4 & 5 & 6 & 7 & 8 & 9 & 10 & 11 \\
+\midrule
+(1) \texttt{lw \$t0,0(\$t2)} & IF & ID & EX & MEM & WB &  &  &  &  &  &  \\
+(2) \texttt{lw \$t1,4(\$t4)} &  & IF & ID & EX & MEM & WB &  &  &  &  &  \\
+(5) \texttt{lw \$t5,12(\$t4)} &  &  & IF & ID & EX & MEM & WB &  &  &  &  \\
+(3) \texttt{add \$t3,\$t0,\$t1} &  &  &  & IF & ID & EX & MEM & WB &  &  &  \\
+(4) \texttt{sw \$t3,8(\$t2)} &  &  &  &  & IF & ID & EX & MEM & WB &  &  \\
+(6) \texttt{add \$t6,\$t5,\$t1} &  &  &  &  &  & IF & ID & EX & MEM & WB &  \\
+(7) \texttt{sw \$t6,16(\$t2)} &  &  &  &  &  &  & IF & ID & EX & MEM & WB \\
+\bottomrule
+\end{tabular}
+\end{center}
+\textbf{11 cycles, 0 stalls} ($=5+7-1$, the ideal).
+\end{solution}
+
+% ----------------------------------------------------------------------------
+\subsection{Exam-style questions}
+Solutions are in Section~\ref{sec:pipe-sol}.
+
+\begin{exercise}[Clocked pipeline]\label{q:pipe-clock}
+Use the stage times of Lecturer question 4 (5, 4, 5, 10, 4~ns) and a 1~ns
+pipeline-register overhead.
+\begin{enumerate}[label=(\alph*),leftmargin=*]
+  \item Find the clock cycle and the time for 1000 instructions on the clocked
+  pipeline, and on a non-pipelined machine that takes 28~ns per instruction.
+  \item MEM is split into two 5~ns stages. Repeat (a) and give the new speedup.
+  \item Why is the speedup in (a) far below 5?
+\end{enumerate}
+\end{exercise}
+
+\begin{exercise}[Finding hazards]\label{q:pipe-hz}
+\leavevmode
+\begin{lstlisting}
+(1) add $t1, $t2, $t3
+(2) sub $t4, $t1, $t5
+(3) lw  $t2, 0($t4)
+(4) or  $t1, $t6, $t7
+(5) sw  $t2, 4($t1)
+\end{lstlisting}
+\begin{enumerate}[label=(\alph*),leftmargin=*]
+  \item List every RAW, WAR and WAW dependence.
+  \item Which of them can cause stalls in the 5-stage pipeline? Why not the others?
+  \item Draw the diagram without forwarding and with forwarding. Give the cycles.
+\end{enumerate}
+\end{exercise}
+
+\begin{exercise}[Branch schemes]\label{q:pipe-br}
+20\% of instructions are branches and 60\% of them are taken. All other
+instructions have $\CPI=1$. Find the CPI for:
+(a) stall, branch resolved in MEM;
+(b) predict not taken, resolved in MEM;
+(c) stall, resolved in ID;
+(d) predict not taken, resolved in ID;
+(e) one delay slot (resolved in ID) filled usefully 50\% of the time.
+(f) Give the speedup of (e) over (a).
+\end{exercise}
+
+\begin{exercise}[Delay slots]\label{q:pipe-slot}
+\leavevmode
+\begin{lstlisting}
+      add  $s1, $s2, $s3
+      beq  $s4, $zero, L
+      (delay slot)
+      sub  $t0, $t1, $t2
+      ...
+L:    or   $t3, $t4, $t5
+\end{lstlisting}
+\begin{enumerate}[label=(\alph*),leftmargin=*]
+  \item Which instruction should fill the slot, and why is it the best choice?
+  \item If the branch were \texttt{beq \$s1,\$zero,L}, why could \texttt{add} not
+  be used? What are the other two options and their conditions?
+\end{enumerate}
+\end{exercise}
+
+% ----------------------------------------------------------------------------
+\subsection{Solutions}
+\label{sec:pipe-sol}
+
+\begin{noot}{Exercise~\ref{q:pipe-clock}}
+\begin{enumerate}[label=(\alph*),leftmargin=*]
+  \item $t_{clk}=10+1=11$~ns. Pipelined: $(5+999)\times11=11{,}044$~ns.
+  Non-pipelined: $1000\times28=28{,}000$~ns. Speedup $=2.54$.
+  \item 6 stages, $t_{clk}=5+1=6$~ns: $(6+999)\times6=6{,}030$~ns, speedup
+  $28{,}000/6{,}030=4.64$.
+  \item The stages are unbalanced: the 10~ns MEM stage sets the clock, so the
+  4--5~ns stages idle half of each cycle, and the latch overhead adds to every
+  stage.
+\end{enumerate}
+\end{noot}
+
+\begin{noot}{Exercise~\ref{q:pipe-hz}}
+\begin{enumerate}[label=(\alph*),leftmargin=*]
+  \item RAW: (1)$\to$(2) \texttt{\$t1}, (2)$\to$(3) \texttt{\$t4}, (3)$\to$(5)
+  \texttt{\$t2}, (4)$\to$(5) \texttt{\$t1}. WAR: (1)$\to$(3) \texttt{\$t2},
+  (2)$\to$(4) \texttt{\$t1}. WAW: (1)$\to$(4) \texttt{\$t1}.
+  \item Only RAW: registers are read in ID and written in WB, in program order, so
+  a later instruction can never write before an earlier one reads (WAR) or writes
+  (WAW).
+  \item Without forwarding (15 cycles, 6 stalls):
+\begin{center}\scriptsize\setlength{\tabcolsep}{1.6pt}
+\begin{tabular}{@{}lccccccccccccccc@{}}
+\toprule
+Instruction & 1 & 2 & 3 & 4 & 5 & 6 & 7 & 8 & 9 & 10 & 11 & 12 & 13 & 14 & 15 \\
+\midrule
+(1) \texttt{add \$t1,\$t2,\$t3} & IF & ID & EX & MEM & WB &  &  &  &  &  &  &  &  &  &  \\
+(2) \texttt{sub \$t4,\$t1,\$t5} &  & IF & ID & \textit{st} & \textit{st} & EX & MEM & WB &  &  &  &  &  &  &  \\
+(3) \texttt{lw \$t2,0(\$t4)} &  &  & IF & \textit{st} & \textit{st} & ID & \textit{st} & \textit{st} & EX & MEM & WB &  &  &  &  \\
+(4) \texttt{or \$t1,\$t6,\$t7} &  &  &  &  &  & IF & \textit{st} & \textit{st} & ID & EX & MEM & WB &  &  &  \\
+(5) \texttt{sw \$t2,4(\$t1)} &  &  &  &  &  &  &  &  & IF & ID & \textit{st} & \textit{st} & EX & MEM & WB \\
+\bottomrule
+\end{tabular}
+\end{center}
+  With forwarding no stall is needed: (2), (3) and (5) get \texttt{\$t1},
+  \texttt{\$t4} and \texttt{\$t1} from EX/MEM, and the load (3) is two
+  instructions before the store that uses \texttt{\$t2} (9 cycles):
+\begin{center}\scriptsize\setlength{\tabcolsep}{1.6pt}
+\begin{tabular}{@{}lccccccccc@{}}
+\toprule
+Instruction & 1 & 2 & 3 & 4 & 5 & 6 & 7 & 8 & 9 \\
+\midrule
+(1) \texttt{add \$t1,\$t2,\$t3} & IF & ID & EX & MEM & WB &  &  &  &  \\
+(2) \texttt{sub \$t4,\$t1,\$t5} &  & IF & ID & EX & MEM & WB &  &  &  \\
+(3) \texttt{lw \$t2,0(\$t4)} &  &  & IF & ID & EX & MEM & WB &  &  \\
+(4) \texttt{or \$t1,\$t6,\$t7} &  &  &  & IF & ID & EX & MEM & WB &  \\
+(5) \texttt{sw \$t2,4(\$t1)} &  &  &  &  & IF & ID & EX & MEM & WB \\
+\bottomrule
+\end{tabular}
+\end{center}
+\end{enumerate}
+\end{noot}
+
+\begin{noot}{Exercise~\ref{q:pipe-br}}
+(a) $1+0.2\times3=1.6$. (b) $1+0.2\times0.6\times3=1.36$. (c) $1+0.2\times1=1.2$.
+(d) $1+0.2\times0.6\times1=1.12$. (e) the slot is wasted half the time:
+$1+0.2\times0.5\times1=1.1$. (f) $1.6/1.1=1.45$.
+\end{noot}
+
+\begin{noot}{Exercise~\ref{q:pipe-slot}}
+\begin{enumerate}[label=(\alph*),leftmargin=*]
+  \item \texttt{add \$s1,\$s2,\$s3} from before the branch (strategy A): the branch
+  does not use \texttt{\$s1}, and the instruction must execute on both paths, so
+  the slot is always useful.
+  \item The branch would need the \texttt{add}'s result, so it cannot be moved past
+  it. From the target (B): copy \texttt{or} into the slot; useful when taken, and
+  \texttt{\$t3} must be unused (dead) on the fall-through path. From the
+  fall-through (C): move \texttt{sub} into the slot; useful when not taken, and
+  \texttt{\$t0} must be dead at \texttt{L}.
+\end{enumerate}
+\end{noot}
+

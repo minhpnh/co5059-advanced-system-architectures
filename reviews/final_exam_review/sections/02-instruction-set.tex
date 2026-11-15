@@ -1,0 +1,884 @@
+% ============================================================================
+\section{Instruction Set Principles}
+\label{sec:isa}
+
+This section covers everything on instruction sets in the course: ISA styles,
+instruction set design (operations, addressing modes, operand types, formats,
+registers), CISC vs.\ RISC, and the MIPS case study (formats, encoding,
+addressing, constants, procedures, atomic operations and the assembler).
+
+% ----------------------------------------------------------------------------
+\subsection{What to know}
+
+\subsubsection{The instruction set}
+\begin{itemize}[leftmargin=*]
+  \item The \textbf{instruction set} is the set of all instructions a
+  processor can perform: the \textbf{interface between software and
+  hardware}.
+  \item Execution cycle: \textbf{instruction fetch} $\to$ \textbf{decode} $\to$
+  \textbf{operand fetch} $\to$ \textbf{execute} (update status) $\to$
+  \textbf{write back} $\to$ next fetch.
+\end{itemize}
+
+\subsubsection{ISA styles: where the operands live}
+\begin{center}
+\small
+\begin{tabular}{@{}p{2.4cm}p{3.3cm}p{3.6cm}p{5.1cm}@{}}
+\toprule
+Style & $C=A+B$ & Operands & Pros / cons \\
+\midrule
+Stack & \texttt{PUSH A; PUSH B; ADD; POP C} & implicit, top of stack &
+(+) code density, simple hardware; (--) low parallelism, stack is a bottleneck \\
+Accumulator & \texttt{LOAD A; ADD B; STORE C} & one implicit register (AC) + memory &
+(+) easy compiler, few instructions; (--) very high memory traffic, variable CPI \\
+Memory-memory & \texttt{ADD C, A, B} & all in memory &
+(+) simple to design and understand; (--) bottleneck, heavy memory access \\
+Register-memory & \texttt{LOAD R1,A; ADD R3,R1,B; STORE R3,C} & register or memory &
+(+) fewer instructions than load-store; (--) operand access time varies \\
+Load-store (reg-reg) & \texttt{LOAD R1,A; LOAD R2,B; ADD R3,R1,R2; STORE R3,C} &
+registers only; only loads/stores touch memory &
+(+) simple fixed encoding, easy to pipeline, registers reused; (--) more
+instructions \\
+\bottomrule
+\end{tabular}
+\end{center}
+Historical machines: Motorola 6800 (2 GPRs, accumulator, 1974), DEC VAX (16,
+register-memory/memory-memory, 1977), Intel 8086 (1, extended accumulator,
+1978), Motorola 68000 (16, register-memory, 1980), Intel 80386 (32,
+register-memory, 1985), PowerPC and DEC Alpha (32, load-store, 1992). Other
+styles: high-level-language architectures (Burroughs B5000, failed for lack of
+compilers) and RISC.
+
+\subsubsection{Instruction set design}
+Five aspects: \textbf{operation repertoire}, \textbf{addressing modes},
+\textbf{data types}, \textbf{instruction format}, \textbf{registers}. A simple
+instruction has an \emph{opcode}, \emph{source operand reference(s)} and a
+\emph{result operand reference}.
+\begin{itemize}[leftmargin=*]
+  \item \textbf{Instruction types} (4): data processing (arithmetic, logic),
+  data storage (load/store to memory), data movement (register/register, I/O,
+  \texttt{MOV}), control (test and branch: \texttt{CMP}, \texttt{JMP}).
+  \item \textbf{Operator types} (8): arithmetic \& logical, data transfer,
+  control (branch, jump, call/return, trap), system (OS call, virtual memory),
+  floating point, decimal, string, graphics. The first four are standard on
+  every machine; the others may be primitives, a coprocessor, or synthesized by
+  the compiler.
+\end{itemize}
+
+\subsubsection{Addressing modes}
+\begin{center}
+\small
+\begin{tabular}{@{}lll@{}}
+\toprule
+Mode & Example & Operand / effective address \\
+\midrule
+Immediate & \texttt{ADD R0,\#10} & the constant in the instruction \\
+Register & \texttt{ADD R0,R1} & \texttt{R1} \\
+Direct (absolute) & \texttt{ADD R0,(100)} & \texttt{M[100]} \\
+Register indirect & \texttt{ADD R0,(R1)} & \texttt{M[R1]} \\
+Displacement & \texttt{LD R1,100(R2)} & \texttt{M[R2+100]} \\
+Indexed & \texttt{ADD R3,(R1+R2)} & \texttt{M[R1+R2]} \\
+Memory indirect & \texttt{load r1 = M[M[r2]]} & \texttt{M[M[R2]]} \\
+PC-relative & \texttt{branch r1<r3, 1000} & target $=$ PC $+$ offset \\
+Scaled & \texttt{load r1 = M[100+r3+r4*d]} & \texttt{M[100+R3+R4$\times$d]} \\
+\bottomrule
+\end{tabular}
+\end{center}
+\begin{itemize}[leftmargin=*]
+  \item Classified by the \emph{source} of data (immediate, register, memory)
+  and by the \emph{address calculation} (direct, indirect, indexed).
+  \item SPEC89 on the VAX: \textbf{displacement} (32--55\%) and
+  \textbf{immediate} (17--43\%) dominate; register deferred 3--24\%, scaled
+  0--16\%, memory indirect 1--6\%. So a new ISA should support these two well.
+  \item Most displacements fit in 12--16 bits; small constants are about
+  50\% of operands, so a 16-bit immediate field covers most cases.
+\end{itemize}
+
+\subsubsection{Operand types and sizes}
+Character: ASCII 8-bit (almost always), Unicode 16-bit. Integer (2's
+complement): short 16-bit, long 32-bit. Floating point: single 32-bit, double
+64-bit. Business: BCD (exact decimal fractions). DSP: fixed point, block
+floating point. Graphics: RGBA/XYZW with 8-, 16-bit or single-precision
+components.
+
+\subsubsection{Instruction format and registers}
+\begin{itemize}[leftmargin=*]
+  \item Encoding affects \textbf{program size} and \textbf{decode
+  complexity}, and must fit enough registers and addressing modes.
+  \item \textbf{Variable length} (VAX, x86): opcode $+$ address specifier/field
+  pairs; dense code, hard to decode. \textbf{Fixed length} (ARM, MIPS,
+  PowerPC): easy to decode and pipeline, larger code. \textbf{Hybrid}: two
+  fixed lengths (MIPS16, Thumb) for density with simple decode.
+  \item A field for $n$ choices needs $\lceil\log_2 n\rceil$ bits; $k$-bit
+  two's-complement field: $-2^{k-1}\ldots2^{k-1}-1$.
+  \item \textbf{Expanding opcode}: leave unused codes of a short opcode as
+  escapes that extend into operand fields of shorter instructions.
+  \item \textbf{Registers}: fastest storage, flexible for the compiler, but
+  cost more per bit; more registers need more bits per instruction and make the
+  register file slower.
+\end{itemize}
+
+\subsubsection{CISC vs.\ RISC}
+\begin{center}
+\small
+\begin{tabular}{@{}p{3cm}p{5.6cm}p{5.6cm}@{}}
+\toprule
+& CISC & RISC \\
+\midrule
+Goal & do more per instruction, fewer instructions & simple instructions, $\CPI\le1$ \\
+Motivation & expensive memory (M6800: 16K RAM \$500); backward compatibility & pipelining, compiler synthesizes complex ops \\
+Encoding & variable length & fixed length (32 bits), few formats \\
+Memory access & ALU operands can be in memory & only load/store \\
+Addressing & many modes (14 in MC68000, 25 in MC68020) & immediate, register indirect, displacement, indexed \\
+Other & 0- to 3-address instructions (VAX) & delayed loads/branches, prefetch, speculation; more instructions executed \\
+Examples & VAX, 680x0, x86 & MIPS, SPARC, PowerPC, Alpha, PA-RISC \\
+\bottomrule
+\end{tabular}
+\end{center}
+Case studies: 680x0 has 18 addressing modes and instructions of 2--10 bytes;
+x86 has 12 modes and instructions of 1--12 bytes; HP PA-RISC has 7 modes and 12
+formats, all 32 bits; Alpha has 4 modes and 7 formats, all 32 bits.
+
+\subsubsection{MIPS}
+\textbf{Design principles}: simplicity favors regularity (fixed size, few
+formats, opcode always in the first 6 bits); smaller is faster (few
+instructions, registers, modes); make the common case fast (register operands,
+immediates); good design demands good compromises (three formats).
+
+SPEC2006 instruction mix: integer programs are 35\% data transfer, 34\%
+conditional branch, 16\% arithmetic, 12\% logical, 2\% jump; floating-point
+programs are 48\% arithmetic, 36\% data transfer, 8\% branch, 4\% logical.
+
+\begin{center}
+\small
+\begin{tabular}{@{}lcccccc@{}}
+\toprule
+Format & 31--26 & 25--21 & 20--16 & 15--11 & 10--6 & 5--0 \\
+\midrule
+R & op (0) & rs & rt & rd & shamt & funct \\
+I & op & rs & rt & \multicolumn{3}{c}{immediate (16)} \\
+J & op & \multicolumn{5}{c}{address (26)} \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\begin{center}
+\footnotesize
+\begin{tabular}{@{}llll@{}}
+\toprule
+Mode in MIPS & Instructions & Address / operand & Range \\
+\midrule
+Register & R-format & \texttt{R[rs]}, \texttt{R[rt]} & 32 registers \\
+Immediate & \texttt{addi}, \texttt{ori}, \texttt{slti} & 16-bit constant & $-32768\ldots32767$ \\
+Base (displacement) & \texttt{lw}, \texttt{sw}, \texttt{lb}, \dots & \texttt{R[rs]} $+$ SignExt(imm) & $\pm32$ KiB \\
+PC-relative & \texttt{beq}, \texttt{bne} & PC$+4+$SignExt(imm)$\times4$ & $\pm2^{15}$ instructions \\
+Pseudo-direct & \texttt{j}, \texttt{jal} & $\{(\text{PC}{+}4)[31{:}28],\ \text{addr},\ 00\}$ & same 256 MiB region \\
+Register indirect & \texttt{jr}, \texttt{jalr} & \texttt{R[rs]} & any address \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\begin{center}
+\small
+\begin{tabular}{@{}llll@{}}
+\toprule
+R-format (op $=0$) & funct & I/J-format & opcode \\
+\midrule
+\texttt{sll}, \texttt{srl}, \texttt{sra} & 00, 02, 03 & \texttt{j}, \texttt{jal} & 02, 03 \\
+\texttt{jr}, \texttt{jalr} & 08, 09 & \texttt{beq}, \texttt{bne}, \texttt{blez}, \texttt{bgtz} & 04, 05, 06, 07 \\
+\texttt{add}, \texttt{addu} & 20, 21 & \texttt{addi}, \texttt{addiu}, \texttt{slti}, \texttt{sltiu} & 08, 09, 0a, 0b \\
+\texttt{sub}, \texttt{subu} & 22, 23 & \texttt{andi}, \texttt{ori}, \texttt{xori}, \texttt{lui} & 0c, 0d, 0e, 0f \\
+\texttt{and}, \texttt{or}, \texttt{xor}, \texttt{nor} & 24, 25, 26, 27 & \texttt{lb}, \texttt{lh}, \texttt{lw}, \texttt{lbu}, \texttt{lhu} & 20, 21, 23, 24, 25 \\
+\texttt{slt}, \texttt{sltu} & 2a, 2b & \texttt{sb}, \texttt{sh}, \texttt{sw}; \texttt{ll}, \texttt{sc} & 28, 29, 2b; 30, 38 \\
+\bottomrule
+\end{tabular}
+\end{center}
+(All in hex.)
+
+\begin{center}
+\small
+\begin{tabular}{@{}llll@{}}
+\toprule
+Name & Number & Use & Preserved across a call? \\
+\midrule
+\texttt{\$zero} & 0 & constant 0 & n/a \\
+\texttt{\$at} & 1 & assembler temporary & no \\
+\texttt{\$v0--\$v1} & 2--3 & results & no \\
+\texttt{\$a0--\$a3} & 4--7 & arguments & no \\
+\texttt{\$t0--\$t7}, \texttt{\$t8--\$t9} & 8--15, 24--25 & temporaries & no \\
+\texttt{\$s0--\$s7} & 16--23 & saved & yes \\
+\texttt{\$k0--\$k1} & 26--27 & OS kernel & no \\
+\texttt{\$gp}, \texttt{\$sp}, \texttt{\$fp}, \texttt{\$ra} & 28--31 & pointers; return address & yes \\
+\bottomrule
+\end{tabular}
+\end{center}
+\begin{remark}
+\slidefix{} The slide table marks \texttt{\$a0--\$a3} as preserved; the MIPS
+reference sheet (H\&P green card) says they are \emph{not}. A callee may
+overwrite its arguments, so a caller that still needs them must save them.
+\end{remark}
+
+\begin{itemize}[leftmargin=*]
+  \item \textbf{R-format}: \texttt{rd $\leftarrow$ rs funct rt}. Shifts use
+  \texttt{rt} as the source, \texttt{shamt} as the amount, \texttt{rs}$=0$.
+  \texttt{sra} shifts in the sign bit. \texttt{jr rs}: register indirect.
+  \item \textbf{I-format}: \texttt{rt} is the destination (or the value stored
+  by \texttt{sw}). \textbf{Sign-extended}: \texttt{addi}, \texttt{slti},
+  load/store offsets, branch offsets. \textbf{Zero-extended}: \texttt{andi},
+  \texttt{ori}, \texttt{xori}.
+  \item \texttt{add}, \texttt{addi}, \texttt{sub} trap on signed overflow;
+  \texttt{addu}, \texttt{addiu}, \texttt{subu} never trap. \texttt{slt}
+  compares signed, \texttt{sltu} unsigned.
+  \item \texttt{lb}/\texttt{lh} sign-extend, \texttt{lbu}/\texttt{lhu}
+  zero-extend. Words must be 4-byte aligned, halfwords 2-byte aligned.
+  \item \texttt{mult}/\texttt{div} write \texttt{HI}/\texttt{LO} (product:
+  HI$=$upper 32 bits, LO$=$lower; division: LO$=$quotient, HI$=$remainder);
+  read them with \texttt{mfhi}/\texttt{mflo}.
+  \item \textbf{Big-endian} (as taught): the most significant byte is at the
+  lowest address. Little-endian puts the least significant byte there.
+  \item \textbf{Synthesized operations}: no \texttt{MOV}
+  (\texttt{add \$t1,\$t0,\$zero}), no \texttt{NOT} (\texttt{nor \$d,\$s,\$zero}),
+  no \texttt{SUBI} (\texttt{addi} with a negative constant), no \texttt{SLA}
+  (same bits as \texttt{sll}).
+  \item \textbf{32-bit constant}: \texttt{lui \$t0,upper; ori \$t0,\$t0,lower}
+  (\texttt{ori} because it zero-extends).
+  \item \textbf{Atomic read-modify-write}: \texttt{ll} then \texttt{sc} to the
+  same address. \texttt{sc} stores and sets \texttt{rt}$=1$ only if the word was
+  not written since the \texttt{ll}; otherwise it stores nothing and sets
+  \texttt{rt}$=0$, so the code retries.
+  \item \textbf{Procedures}: \texttt{jal label} puts the return address in
+  \texttt{\$ra} and jumps; \texttt{jr \$ra} returns. Convention: save return
+  address, save registers, run, restore registers, restore return address,
+  return. The stack grows down: \texttt{addi \$sp,\$sp,-4k} then
+  \texttt{sw}, and the reverse on exit. A non-leaf procedure must save
+  \texttt{\$ra}.
+  \item \textbf{Assembler}: directives \texttt{.text}, \texttt{.data},
+  \texttt{.globl}, \texttt{.word}, \texttt{.space}. Pseudo-instructions
+  (\texttt{li}, \texttt{la}, \texttt{move}, \texttt{lw} of a label, \texttt{blt},
+  \dots) expand to real instructions, using \texttt{\$at} as scratch. SPIM's
+  data segment starts at \texttt{0x10010000}.
+\end{itemize}
+
+% ----------------------------------------------------------------------------
+\subsection{Common traps}
+\begin{enumerate}[leftmargin=*]
+  \item Branch offsets count \emph{instructions} from PC$+4$, not bytes from
+  the branch: offset $=(\text{target}-(\text{PC}+4))/4$.
+  \item The \texttt{j} field is the target \emph{divided by 4} (26 bits); the
+  top 4 bits come from PC$+4$.
+  \item Shifts: the source is \texttt{rt}, not \texttt{rs}; \texttt{rs}$=0$.
+  \item I-format: the destination is \texttt{rt}, written \emph{second} in the
+  binary but \emph{first} in assembly.
+  \item \texttt{ori}/\texttt{andi} zero-extend; \texttt{addi} sign-extends.
+  \texttt{lui}+\texttt{addi} breaks when the low half is $\ge$\texttt{0x8000}.
+  \item \texttt{lb} vs.\ \texttt{lbu}: a byte $\ge$\texttt{0x80} becomes
+  negative with \texttt{lb}.
+  \item Code size and memory traffic are different questions: count
+  instruction bytes for code size, data accesses for traffic.
+  \item Fewer instructions (CISC) does not mean faster: use $I\times\CPI\times C$.
+\end{enumerate}
+
+% ----------------------------------------------------------------------------
+\subsection{Lecturer's review questions}
+
+\begin{exercise}[Lecturer 1]
+In the MIPS instruction set, \texttt{NOT A} can be replaced by:
+(a) \texttt{A NAND 0}; (b) \texttt{A XOR 0}; (c) \texttt{A NOR 0}; (d) none of the
+above.
+\end{exercise}
+\begin{solution}
+\textbf{(c)}: $\overline{A+0}=\overline{A}$, i.e.\ \texttt{nor \$d,\$s,\$zero}.
+\texttt{A NAND 0} is always all ones and \texttt{A XOR 0} $=A$ (and MIPS has no
+\texttt{nand}).
+\end{solution}
+
+\begin{exercise}[Lecturer 2]
+Microprocessor performance can be measured by: (a) MIPS; (b) throughput; (c) MFLOPS;
+(d) all of the above.
+\end{exercise}
+\begin{solution}
+\textbf{(d)}. All three are performance \emph{metrics}. Remember the caveat from
+Section~\ref{sec:intro}: MIPS and MFLOPS can mislead, and execution time of real
+programs is the only reliable measure.
+\end{solution}
+
+\begin{exercise}[Lecturer 3]
+The MIPS architecture is a: (a) stack; (b) accumulator; (c) register/register;
+(d) register/memory architecture.
+\end{exercise}
+\begin{solution}
+\textbf{(c)}: a load-store (register-register) ISA; only \texttt{lw}/\texttt{sw}
+(and friends) access memory.
+\end{solution}
+
+\begin{exercise}[Lecturer 4]
+Find \texttt{\$t1} after \texttt{lui \$t1,0x1234; addi \$t1,\$t1,0x5678}:
+(a) \texttt{0x00000000}; (b) \texttt{0x1234}; (c) \texttt{0x5678};
+(d) \texttt{0x12345678}.
+\end{exercise}
+\begin{solution}
+\textbf{(d)}. \texttt{lui} gives \texttt{0x12340000}; \texttt{0x5678} has bit 15 $=0$,
+so sign extension gives \texttt{0x00005678} and the sum is \texttt{0x12345678}.
+(With a low half $\ge$\texttt{0x8000}, \texttt{addi} would subtract
+\texttt{0x10000}; see Exercise~\ref{q:isa-sign}(e).)
+\end{solution}
+
+\begin{exercise}[Lecturer 5]
+The x86 architecture is: (a) big-endian; (b) most-significant byte at the highest
+address of a word; (c) most-significant byte at the lowest address of a word;
+(d) none of the above.
+\end{exercise}
+\begin{solution}
+\textbf{(b)}: x86 is \emph{little-endian}; the least-significant byte is at the
+lowest address, so the most-significant byte is at the highest. (c) describes
+big-endian, the MIPS convention in this course.
+\end{solution}
+
+% ----------------------------------------------------------------------------
+\subsection{Exam-style questions}
+Solutions are in Section~\ref{sec:isa-sol}.
+
+\begin{exercise}[Comparing ISA styles]\label{q:isa-styles}
+Compile $E=(A-B)\times(C+D)$, where $A$--$E$ are in memory, for a stack,
+accumulator, memory-memory (3-operand), register-memory (3-operand, last operand
+may be in memory, as in \texttt{ADD R3,R1,B}) and load-store machine. Do not
+overwrite $A$--$D$; use memory temporaries \texttt{T}, \texttt{T1},
+\texttt{T2} where needed.
+Encoding: opcode 8 bits, memory address 16 bits, register field 4 bits (16
+registers); stack \texttt{ADD}/\texttt{SUB}/\texttt{MUL} have only an opcode.
+\begin{enumerate}[label=(\alph*),leftmargin=*]
+  \item Write the code and count the instructions.
+  \item Find the code size in bytes.
+  \item Count the data memory accesses (reads $+$ writes of $A$--$E$ and
+  temporaries). Assuming 4-byte data, find the total memory traffic (code $+$
+  data) per execution.
+  \item The next statement is $F=A\times B$. Which styles can reuse work
+  already done?
+\end{enumerate}
+\end{exercise}
+
+\begin{exercise}[Addressing modes]\label{q:isa-modes}
+Registers: \texttt{R1}$=100$, \texttt{R2}$=200$, \texttt{R3}$=4$. Memory
+(word at each address): \texttt{M[100]}$=300$, \texttt{M[104]}$=50$,
+\texttt{M[116]}$=9$, \texttt{M[200]}$=100$, \texttt{M[204]}$=7$,
+\texttt{M[300]}$=40$. Find the value loaded into \texttt{R4} and name the mode:
+\begin{center}
+\small
+\begin{tabular}{@{}llll@{}}
+(a) \texttt{LOAD R4,\#100} & (b) \texttt{LOAD R4,R1} & (c) \texttt{LOAD R4,(100)} & (d) \texttt{LOAD R4,(R2)} \\
+(e) \texttt{LOAD R4,4(R2)} & (f) \texttt{LOAD R4,(R1+R3)} & (g) \texttt{LOAD R4,@(R1)} & (h) \texttt{LOAD R4,0(R1)[R3]} \\
+\end{tabular}
+\end{center}
+(\texttt{@} is memory indirect; (h) is scaled: \texttt{M[0+R1+R3$\times$d]} with $d=4$.)
+\begin{enumerate}[label=(\alph*),leftmargin=*,start=9]
+  \item Which of these modes does MIPS have? Write MIPS code for (c), (f) and
+  (g) with \texttt{\$s1}$=$\texttt{R1}, \texttt{\$s3}$=$\texttt{R3},
+  \texttt{\$s4}$=$\texttt{R4}.
+  \item Using the SPEC89 data, explain why MIPS keeps only a few modes.
+\end{enumerate}
+\end{exercise}
+
+\begin{exercise}[Instruction format design]\label{q:isa-format}
+\leavevmode
+\begin{enumerate}[label=(\alph*),leftmargin=*]
+  \item A machine has 16-bit instructions and 16 registers. It needs 15
+  instructions with three register operands, 14 with two, 31 with one and 16
+  with none. Design an expanding-opcode encoding, or show it is impossible.
+  \item MIPS is extended to 128 registers, keeping 32-bit instructions and a
+  6-bit opcode. How wide can the I-format immediate be now, and what is its
+  range? How many bits are left in the R-format for \texttt{shamt} and
+  \texttt{funct}? What are the consequences?
+  \item Give two reasons for and two against adding more registers.
+  \item Why does a fixed-length encoding help pipelining, and how do MIPS16 and
+  Thumb recover code density?
+\end{enumerate}
+\end{exercise}
+
+\begin{exercise}[CISC vs.\ RISC]\label{q:isa-cisc}
+A program is compiled for a CISC and a RISC machine:
+\begin{center}
+\begin{tabular}{@{}lcc@{}}
+\toprule
+& CISC & RISC \\
+\midrule
+Static instruction count & 50{,}000 & 80{,}000 \\
+Average instruction length & 3.5 bytes & 4 bytes \\
+Dynamic instruction count & $1.0\times10^9$ & $1.6\times10^9$ \\
+CPI & 4.0 & 1.2 \\
+Clock & 2.0 GHz & 2.5 GHz \\
+\bottomrule
+\end{tabular}
+\end{center}
+\begin{enumerate}[label=(\alph*),leftmargin=*]
+  \item Find the code size on each machine.
+  \item Find the CPU time on each machine and the speedup of RISC.
+  \item A compressed RISC mode (like Thumb) needs 15\% more instructions;
+  70\% of them are 2 bytes and the rest 4 bytes. Find the new code size.
+  \item Explain why CISC made sense in the 1970s and why it was kept.
+\end{enumerate}
+\end{exercise}
+
+\begin{exercise}[Encoding MIPS]\label{q:isa-enc}
+Give the format, fields, binary and hex of:
+(a) \texttt{slt \$t0,\$s1,\$s2};
+(b) \texttt{srl \$t1,\$s3,4};
+(c) \texttt{andi \$s2,\$t3,0x00F0};
+(d) \texttt{lbu \$t2,3(\$a1)};
+(e) \texttt{sw \$ra,4(\$sp)};
+(f) \texttt{jal Proc}, with \texttt{Proc} at \texttt{0x00400200}.
+\end{exercise}
+
+\begin{exercise}[Decoding MIPS]\label{q:isa-dec}
+The words below are at addresses \texttt{0x00400000}, \texttt{0x00400004},
+\dots{} in order. Decode each one; for branches and jumps give the target
+address.
+\begin{center}
+\texttt{0x02119822}\quad \texttt{0x2108FFFF}\quad \texttt{0xAFBF0004}\quad
+\texttt{0x1520FFFC}\quad \texttt{0x0C100080}
+\end{center}
+\end{exercise}
+
+\begin{exercise}[Branch and jump ranges]\label{q:isa-range}
+\leavevmode
+\begin{enumerate}[label=(\alph*),leftmargin=*]
+  \item \texttt{beq \$s0,\$s1,Far} is at \texttt{0x00400100} and \texttt{Far}
+  is at \texttt{0x00480000}. Can it be encoded? If not, rewrite it and give the
+  encoding of the jump.
+  \item Can a \texttt{j} at \texttt{0x00400100} reach \texttt{0x10000000}? If
+  not, how do you get there?
+  \item State the reach of \texttt{beq}, \texttt{j} and \texttt{jr}.
+  \item Why are branch and jump offsets stored in words rather than bytes?
+\end{enumerate}
+\end{exercise}
+
+\begin{exercise}[Bytes, signs and overflow]\label{q:isa-sign}
+MIPS is big-endian. The word \texttt{0x8A0B7CFF} is stored at address
+\texttt{0x2000}.
+\begin{enumerate}[label=(\alph*),leftmargin=*]
+  \item Give the byte at each address \texttt{0x2000}--\texttt{0x2003}. Find
+  the 32-bit result of \texttt{lb} and \texttt{lbu} from \texttt{0x2000} and
+  from \texttt{0x2003}, \texttt{lh} from \texttt{0x2000} and \texttt{lhu} from
+  \texttt{0x2002}.
+  \item What does \texttt{lb} from \texttt{0x2000} return on a little-endian
+  machine? What happens with \texttt{lw} from \texttt{0x2002}?
+  \item \texttt{\$t1}$=$\texttt{0x7FFFFFFF}. What do \texttt{addi \$t2,\$t1,1}
+  and \texttt{addiu \$t2,\$t1,1} do?
+  \item \texttt{\$s0}$=$\texttt{0xFFFFFFFF}, \texttt{\$s1}$=1$. Find
+  \texttt{slt \$t0,\$s0,\$s1} and \texttt{sltu \$t0,\$s0,\$s1}.
+  \item Load \texttt{0x8000F000} into \texttt{\$t0}. What goes wrong with
+  \texttt{lui \$t0,0x8000; addi \$t0,\$t0,0xF000}?
+\end{enumerate}
+\end{exercise}
+
+\begin{exercise}[Directives and pseudo-instructions]\label{q:isa-asm}
+In SPIM the data segment starts at \texttt{0x10010000}.
+\begin{lstlisting}
+        .data
+x:      .word  5
+buf:    .space 6
+y:      .word  0x11223344
+        .text
+        .globl main
+main:   la    $t0, y
+        lw    $t1, x
+        li    $t2, 0x12345
+        move  $a0, $t1
+\end{lstlisting}
+\begin{enumerate}[label=(\alph*),leftmargin=*]
+  \item Give the addresses of \texttt{x}, \texttt{buf} and \texttt{y}.
+  \item Expand each instruction of \texttt{main} into real MIPS instructions.
+  \item Why is \texttt{\$at} reserved for the assembler?
+\end{enumerate}
+\end{exercise}
+
+\begin{exercise}[C to MIPS and instruction counts]\label{q:isa-count}
+\leavevmode
+\begin{lstlisting}[language=C,keywords={int,char,while,if,return}]
+int count(char *s, char c) {      // s in $a0, c in $a1
+    int n = 0;
+    while (*s != 0) { if (*s == c) n++; s++; }
+    return n;                     // in $v0
+}
+\end{lstlisting}
+\begin{enumerate}[label=(\alph*),leftmargin=*]
+  \item Write \texttt{count} in MIPS. Does it need the stack?
+  \item How many instructions run for \texttt{s = "abca"}, \texttt{c = 'a'}?
+  \item ALU instructions take 1 cycle and loads, branches and jumps take 2.
+  Find the cycles and the CPI.
+  \item Move the loop test to the bottom to remove the \texttt{j}. Repeat (b)
+  and (c) and give the speedup.
+\end{enumerate}
+\end{exercise}
+
+\begin{exercise}[Recursion and the stack]\label{q:isa-fact}
+Use the recursive \texttt{fact} from the course:
+\begin{lstlisting}
+fact: addi $sp, $sp, -8
+      sw   $ra, 4($sp)
+      sw   $a0, 0($sp)
+      slti $t0, $a0, 1
+      beq  $t0, $zero, L1
+      addi $v0, $zero, 1
+      addi $sp, $sp, 8
+      jr   $ra
+L1:   addi $a0, $a0, -1
+      jal  fact
+      lw   $a0, 0($sp)
+      lw   $ra, 4($sp)
+      addi $sp, $sp, 8
+      mul  $v0, $a0, $v0
+      jr   $ra
+\end{lstlisting}
+\begin{enumerate}[label=(\alph*),leftmargin=*]
+  \item \texttt{main} calls \texttt{fact(3)} with \texttt{\$sp}$=$\texttt{0x7FFFEFFC}.
+  What is the lowest value \texttt{\$sp} reaches, and what is stored in each
+  frame?
+  \item How many instructions of \texttt{fact} run in total?
+  \item Give \texttt{\$v0} at each return.
+  \item Why must \texttt{\$a0} and \texttt{\$ra} be saved? What happens if
+  \texttt{\$ra} is not?
+\end{enumerate}
+\end{exercise}
+
+\begin{exercise}[Atomic increment with LL/SC]\label{q:isa-llsc}
+\leavevmode
+\begin{lstlisting}
+again: ll   $t0, 0($s0)
+       addi $t1, $t0, 1
+       sc   $t1, 0($s0)
+       beq  $t1, $zero, again
+\end{lstlisting}
+\begin{enumerate}[label=(\alph*),leftmargin=*]
+  \item What does the code do, and what is in \texttt{\$t0} at the end?
+  \item Two processors run it at the same time on a counter equal to 5. Trace
+  one possible interleaving. What is the final value? What could happen with
+  \texttt{lw}/\texttt{sw} instead?
+  \item Why should the code between \texttt{ll} and \texttt{sc} be short?
+\end{enumerate}
+\end{exercise}
+
+\begin{exercise}[Short answers]\label{q:isa-short}
+Answer in one or two sentences.
+\begin{enumerate}[label=(\alph*),leftmargin=*]
+  \item Why does MIPS have no \texttt{SUBI}, no \texttt{NOT} and no
+  \texttt{SLA}?
+  \item List three uses of \texttt{\$zero}.
+  \item Why is the opcode always in bits 31--26 and \texttt{rs}, \texttt{rt}
+  always in the same place?
+  \item Why is a load-store ISA easier to pipeline than a register-memory one?
+  \item Which instruction classes should be fast for SPEC2006 integer and for
+  floating-point programs?
+  \item Why does MIPS need \texttt{ll}/\texttt{sc} instead of a single atomic
+  instruction?
+  \item Name an operand type a business machine needs that a DSP does not,
+  and the reverse.
+  \item Which part of the CPU equation does a RISC ISA increase, and which does
+  it reduce?
+\end{enumerate}
+\end{exercise}
+
+% ----------------------------------------------------------------------------
+\subsection{Solutions}
+\label{sec:isa-sol}
+
+\begin{noot}{Exercise~\ref{q:isa-styles}}
+(a), (b) Instruction sizes: \texttt{PUSH}/\texttt{POP}, accumulator
+instructions $8+16=24$ bits; stack ALU $8$; memory-memory $8+3\cdot16=56$;
+register load/store $8+4+16=28$; register-memory ALU $8+4+4+16=32$;
+register-register ALU $8+3\cdot4=20$.
+\begin{center}
+\footnotesize
+\begin{tabular}{@{}p{1.9cm}p{6.1cm}cp{2.5cm}c@{}}
+\toprule
+Style & Code & Instr. & Code size & Data acc. \\
+\midrule
+Stack & \texttt{PUSH A; PUSH B; SUB; PUSH C; PUSH D; ADD; MUL; POP E} & 8 &
+$5\cdot24+3\cdot8=144$ b $=18$ B & 5 \\
+Accumulator & \texttt{LOAD C; ADD D; STORE T; LOAD A; SUB B; MUL T; STORE E} & 7 &
+$7\cdot24=168$ b $=21$ B & 7 \\
+Memory-memory & \texttt{SUB T1,A,B; ADD T2,C,D; MUL E,T1,T2} & 3 &
+$3\cdot56=168$ b $=21$ B & 9 \\
+Register-memory & \texttt{LOAD R1,A; SUB R1,R1,B; LOAD R2,C; ADD R2,R2,D; MUL R3,R1,R2; STORE R3,E} & 6 &
+$2(28{+}32){+}20{+}28$ $=168$ b $=21$ B & 5 \\
+Load-store & \texttt{LOAD R1,A; LOAD R2,B; LOAD R3,C; LOAD R4,D; SUB R1,R1,R2; ADD R3,R3,R4; MUL R1,R1,R3; STORE R1,E} & 8 &
+$5\cdot28+3\cdot20=200$ b $=25$ B & 5 \\
+\bottomrule
+\end{tabular}
+\end{center}
+(c) Total traffic $=$ code $+$ $4\times$data accesses: stack $18+20=38$ B,
+accumulator $21+28=49$ B, memory-memory $21+36=57$ B, register-memory
+$21+20=41$ B, load-store $25+20=45$ B. The stack machine has the densest code;
+memory-memory and accumulator machines pay with data traffic (temporaries go to
+memory); load-store has the largest code but the simplest instructions.
+
+(d) Only the register styles: \texttt{A} and \texttt{B} are still in
+\texttt{R1}/\texttt{R2} on the load-store machine (if the compiler keeps
+them) and \texttt{A} in \texttt{R1} on the register-memory one, so no reloads
+are needed. Stack, accumulator and memory-memory machines must read \texttt{A}
+and \texttt{B} from memory again.
+\end{noot}
+
+\begin{noot}{Exercise~\ref{q:isa-modes}}
+(a) immediate: 100. (b) register: 100. (c) direct: \texttt{M[100]}$=300$.
+(d) register indirect: \texttt{M[200]}$=100$. (e) displacement:
+\texttt{M[204]}$=7$. (f) indexed: \texttt{M[104]}$=50$. (g) memory indirect:
+\texttt{M[M[100]]}$=$\texttt{M[300]}$=40$. (h) scaled:
+\texttt{M[100+4$\times$4]}$=$\texttt{M[116]}$=9$.
+
+(i) MIPS has register, immediate and displacement (plus PC-relative and
+pseudo-direct for control). Register indirect is displacement with 0; direct is
+displacement from \texttt{\$zero} (addresses below 32 KiB only):
+\begin{lstlisting}
+lw   $s4, 100($zero)      # (c) direct
+add  $t0, $s1, $s3        # (f) indexed: form the address first
+lw   $s4, 0($t0)
+lw   $t0, 0($s1)          # (g) memory indirect: two loads
+lw   $s4, 0($t0)
+\end{lstlisting}
+(j) Displacement and immediate cover most uses (32--55\% and 17--43\%); memory
+indirect ($\le6\%$) and scaled ($\le16\%$) are rare and can be synthesized
+with one extra instruction. Fewer modes keep decode simple and the clock short
+(smaller is faster, make the common case fast).
+\end{noot}
+
+\begin{noot}{Exercise~\ref{q:isa-format}}
+\begin{enumerate}[label=(\alph*),leftmargin=*]
+  \item Possible, with every code used. Three operands: 4-bit opcode
+  \texttt{0000}--\texttt{1110} (15), \texttt{1111} is the escape. Two operands:
+  \texttt{1111 cccc rrrr rrrr}, \texttt{cccc} $=$ \texttt{0000}--\texttt{1101}
+  (14), escapes \texttt{1110}, \texttt{1111}. One operand:
+  \texttt{1111 111x cccc rrrr}, 32 codes, use 31 and keep
+  \texttt{1111 1111 1111} as the escape. None: \texttt{1111 1111 1111 cccc},
+  16 codes. Check: $15\cdot2^{12}+14\cdot2^8+31\cdot2^4+16=61440+3584+496+16=65536=2^{16}$.
+  \item Register fields are 7 bits. I-format: $32-6-7-7=12$ bits, range
+  $-2048\ldots2047$. R-format: $32-6-3\cdot7=5$ bits for \texttt{shamt} and
+  \texttt{funct} together. Consequences: offsets and constants need
+  \texttt{lui}/extra instructions more often, branches reach only $\pm2^{11}$
+  instructions, and there is no room for both a 5-bit \texttt{shamt} and a
+  \texttt{funct}, so fewer R-type operations (or variable shifts only).
+  \item For: fewer loads/stores (spills), more values kept close for the
+  compiler. Against: more bits per instruction, a slower (larger) register file,
+  more state to save on calls and context switches.
+  \item Every instruction has the same length and field positions, so the next
+  PC is known (PC$+4$) and decode and register read can start at once, in fixed
+  stages. MIPS16/Thumb add a second, 16-bit fixed format for common
+  instructions: denser code, still simple decode.
+\end{enumerate}
+\end{noot}
+
+\begin{noot}{Exercise~\ref{q:isa-cisc}}
+\begin{enumerate}[label=(\alph*),leftmargin=*]
+  \item CISC $50{,}000\times3.5=175{,}000$ B; RISC $80{,}000\times4=320{,}000$ B
+  ($1.83\times$ larger).
+  \item CISC $\dfrac{10^9\times4.0}{2\times10^9}=2.0$ s; RISC
+  $\dfrac{1.6\times10^9\times1.2}{2.5\times10^9}=0.768$ s. Speedup
+  $2.0/0.768=2.6$: 60\% more instructions, but a much lower CPI and faster clock.
+  \item $80{,}000\times1.15=92{,}000$ instructions, average
+  $0.7\cdot2+0.3\cdot4=2.6$ B, size $239{,}200$ B: 25\% smaller than plain RISC,
+  still larger than CISC.
+  \item Memory was expensive (16 KiB RAM for \$500, a 40 MB disk \$55{,}000),
+  so compact code mattered, and complex instructions narrowed the gap to
+  high-level languages. Later CISC designs had to run old binaries, so the
+  instruction sets were kept for backward compatibility.
+\end{enumerate}
+\end{noot}
+
+\begin{noot}{Exercise~\ref{q:isa-enc}}
+\begin{center}
+\footnotesize
+\setlength{\tabcolsep}{3pt}
+\begin{tabular}{@{}lp{4.1cm}l@{}}
+\toprule
+Instruction & Fields & Binary $=$ hex \\
+\midrule
+(a) R & op 0, rs 17, rt 18, rd 8, sh 0, fn \texttt{2a} &
+\texttt{000000 10001 10010 01000 00000 101010} $=$ \texttt{0x0232402A} \\
+(b) R & op 0, rs 0, rt 19, rd 9, sh 4, fn 02 &
+\texttt{000000 00000 10011 01001 00100 000010} $=$ \texttt{0x00134902} \\
+(c) I & op \texttt{0c}, rs 11, rt 18, imm \texttt{0x00F0} &
+\texttt{001100 01011 10010 0000000011110000} $=$ \texttt{0x317200F0} \\
+(d) I & op 24, rs 5, rt 10, imm 3 &
+\texttt{100100 00101 01010 0000000000000011} $=$ \texttt{0x90AA0003} \\
+(e) I & op \texttt{2b}, rs 29, rt 31, imm 4 &
+\texttt{101011 11101 11111 0000000000000100} $=$ \texttt{0xAFBF0004} \\
+(f) J & op 03, addr $=$ \texttt{0x00400200}$/4=$ \texttt{0x0100080} &
+\texttt{000011 00000100000000000010000000} $=$ \texttt{0x0C100080} \\
+\bottomrule
+\end{tabular}
+\end{center}
+\end{noot}
+
+\begin{noot}{Exercise~\ref{q:isa-dec}}
+\begin{itemize}[leftmargin=*]
+  \item \texttt{0x02119822} $=$ \texttt{000000 10000 10001 10011 00000 100010}:
+  R, funct \texttt{22} $\Rightarrow$ \texttt{sub \$s3,\$s0,\$s1}.
+  \item \texttt{0x2108FFFF} $=$ \texttt{001000 01000 01000 1111111111111111}:
+  \texttt{addi \$t0,\$t0,-1}.
+  \item \texttt{0xAFBF0004} $=$ \texttt{101011 11101 11111 0000000000000100}:
+  \texttt{sw \$ra,4(\$sp)}.
+  \item \texttt{0x1520FFFC} $=$ \texttt{000101 01001 00000 1111111111111100}:
+  \texttt{bne \$t1,\$zero,-4}. At \texttt{0x0040000C}: target
+  $=$ \texttt{0x00400010}$-16=$ \texttt{0x00400000}.
+  \item \texttt{0x0C100080} $=$ \texttt{000011} $+$ \texttt{0x0100080}:
+  \texttt{jal}, target $=\{0000,\ \texttt{0x0100080}\times4\}=$ \texttt{0x00400200}.
+\end{itemize}
+\end{noot}
+
+\begin{noot}{Exercise~\ref{q:isa-range}}
+\begin{enumerate}[label=(\alph*),leftmargin=*]
+  \item Offset $=(\texttt{0x00480000}-\texttt{0x00400104})/4=131{,}007>32{,}767$:
+  it does not fit. Invert the condition and jump:
+\begin{lstlisting}
+0x00400100        bne  $s0, $s1, Skip   # offset 1
+0x00400104        j    Far              # 0x08120000
+0x00400108  Skip: ...
+\end{lstlisting}
+  \texttt{j} field $=$ \texttt{0x00480000}$/4=$ \texttt{0x0120000}, encoding
+  \texttt{0x08120000}; the top 4 bits of PC$+4$ and of \texttt{Far} are both 0.
+  \item No: the top 4 bits of PC$+4$ are \texttt{0000} but the target's are
+  \texttt{0001}. Use \texttt{lui \$at,0x1000; jr \$at}.
+  \item \texttt{beq}: $-2^{15}\ldots2^{15}-1$ instructions from PC$+4$, about
+  $\pm128$ KiB. \texttt{j}: anywhere in the current 256 MiB region.
+  \texttt{jr}: any 32-bit address.
+  \item Instructions are word-aligned, so the low 2 bits of every target are 0;
+  storing words gives $4\times$ the reach for free.
+\end{enumerate}
+\end{noot}
+
+\begin{noot}{Exercise~\ref{q:isa-sign}}
+\begin{enumerate}[label=(\alph*),leftmargin=*]
+  \item \texttt{0x2000}: \texttt{8A}, \texttt{0x2001}: \texttt{0B},
+  \texttt{0x2002}: \texttt{7C}, \texttt{0x2003}: \texttt{FF}.
+  \texttt{lb 0x2000} $=$ \texttt{0xFFFFFF8A} ($-118$);
+  \texttt{lbu 0x2000} $=$ \texttt{0x0000008A} (138);
+  \texttt{lb 0x2003} $=$ \texttt{0xFFFFFFFF} ($-1$);
+  \texttt{lbu 0x2003} $=$ \texttt{0x000000FF} (255);
+  \texttt{lh 0x2000} $=$ \texttt{0xFFFF8A0B};
+  \texttt{lhu 0x2002} $=$ \texttt{0x00007CFF}.
+  \item Little-endian puts \texttt{FF} at \texttt{0x2000}, so \texttt{lb}
+  returns \texttt{0xFFFFFFFF}. \texttt{lw} from \texttt{0x2002} is not
+  word-aligned: address error exception.
+  \item \texttt{addi}: $2^{31}-1+1$ overflows, so an exception is raised and
+  \texttt{\$t2} is not written. \texttt{addiu}: \texttt{\$t2}$=$\texttt{0x80000000}, no exception.
+  \item \texttt{slt}: $-1<1$, so 1. \texttt{sltu}: $4{,}294{,}967{,}295<1$ is false, so 0.
+  \item \texttt{lui \$t0,0x8000; ori \$t0,\$t0,0xF000}. With \texttt{addi},
+  \texttt{0xF000} is sign-extended to \texttt{0xFFFFF000}; adding it to
+  \texttt{0x80000000} ($-2^{31}$) gives signed overflow (an exception), and even
+  \texttt{addiu} would give \texttt{0x7FFFF000}.
+\end{enumerate}
+\end{noot}
+
+\begin{noot}{Exercise~\ref{q:isa-asm}}
+\begin{enumerate}[label=(\alph*),leftmargin=*]
+  \item \texttt{x} $=$ \texttt{0x10010000} (4 B); \texttt{buf} $=$
+  \texttt{0x10010004}--\texttt{0x10010009}; \texttt{.word} aligns to 4, so
+  \texttt{y} $=$ \texttt{0x1001000C} (2 bytes of padding).
+  \item One valid expansion:
+\begin{lstlisting}
+lui  $at, 0x1001          # la $t0, y
+ori  $t0, $at, 0x000C
+lui  $at, 0x1001          # lw $t1, x
+lw   $t1, 0($at)
+lui  $at, 0x0001          # li $t2, 0x12345
+ori  $t2, $at, 0x2345
+addu $a0, $zero, $t1      # move $a0, $t1
+\end{lstlisting}
+  \item Pseudo-instructions need a scratch register to build addresses and
+  constants; if programs used \texttt{\$at}, the expansion would destroy their
+  values.
+\end{enumerate}
+\end{noot}
+
+\begin{noot}{Exercise~\ref{q:isa-count}}
+(a) A leaf procedure that only uses \texttt{\$t} registers needs no stack:
+\begin{lstlisting}
+count: add  $v0, $zero, $zero   # n = 0
+loop:  lbu  $t0, 0($a0)         # *s
+       beq  $t0, $zero, done
+       bne  $t0, $a1, next
+       addi $v0, $v0, 1         # n++
+next:  addi $a0, $a0, 1         # s++ (chars are bytes)
+       j    loop
+done:  jr   $ra
+\end{lstlisting}
+(b) Each character: \texttt{lbu}, \texttt{beq}, \texttt{bne}, \texttt{addi},
+\texttt{j} $=5$, plus 1 on a match. Total $1+4\cdot5+2+2+1=26$ (2 matches,
+final \texttt{lbu}+\texttt{beq}, \texttt{jr}).
+
+(c) ALU 7 (\texttt{add}, 2 \texttt{addi} $n$, 4 \texttt{addi} $s$), loads 5,
+branches 9, jumps 5. Cycles $=7+2(5+9+5)=45$, $\CPI=45/26=1.73$.
+
+(d)
+\begin{lstlisting}
+count: add  $v0, $zero, $zero
+       lbu  $t0, 0($a0)
+       beq  $t0, $zero, done
+loop:  bne  $t0, $a1, next
+       addi $v0, $v0, 1
+next:  addi $a0, $a0, 1
+       lbu  $t0, 0($a0)
+       bne  $t0, $zero, loop
+done:  jr   $ra
+\end{lstlisting}
+Instructions $=3+4\cdot4+2+1=22$: ALU 7, loads 5, branches 9, jumps 1.
+Cycles $=7+2(5+9+1)=37$, $\CPI=37/22=1.68$. Speedup $=45/37=1.22$.
+\end{noot}
+
+\begin{noot}{Exercise~\ref{q:isa-fact}}
+\begin{enumerate}[label=(\alph*),leftmargin=*]
+  \item Four calls (\texttt{n}$=3,2,1,0$), 8 bytes each: lowest
+  \texttt{\$sp} $=$ \texttt{0x7FFFEFFC}$-32=$ \texttt{0x7FFFEFDC}. Each frame
+  holds \texttt{\$ra} at \texttt{4(\$sp)} and \texttt{\$a0} at
+  \texttt{0(\$sp)}: frame 1 has \texttt{main}'s return address and 3; frames
+  2--4 have the address after \texttt{jal fact} and 2, 1, 0.
+  \item A call with \texttt{n}$\ge1$ runs 5 (entry and test) $+2$
+  (\texttt{addi}, \texttt{jal}) $+5$ (after return) $=12$; the base case runs
+  $5+3=8$. Total $3\cdot12+8=44$.
+  \item \texttt{fact(0)}$=1$, \texttt{fact(1)}$=1\cdot1=1$,
+  \texttt{fact(2)}$=2$, \texttt{fact(3)}$=6$.
+  \item \texttt{\$a0} is changed for the recursive call but \texttt{n} is
+  needed for the multiply afterwards; \texttt{jal} overwrites \texttt{\$ra}.
+  Without saving \texttt{\$ra}, every \texttt{jr \$ra} returns to the
+  instruction after \texttt{jal fact}, so the function never returns to
+  \texttt{main} (it loops).
+\end{enumerate}
+\end{noot}
+
+\begin{noot}{Exercise~\ref{q:isa-llsc}}
+\begin{enumerate}[label=(\alph*),leftmargin=*]
+  \item An atomic fetch-and-increment of \texttt{M[\$s0]}: \texttt{ll} reads
+  the value, \texttt{sc} writes value$+1$ only if nobody wrote the word
+  meanwhile, and otherwise the loop retries. \texttt{\$t0} holds the old value.
+  \item P1 \texttt{ll} (5), P2 \texttt{ll} (5), P1 \texttt{sc} 6 succeeds, P2
+  \texttt{sc} fails (the word changed) and returns 0, P2 retries: \texttt{ll}
+  (6), \texttt{sc} 7. Final value 7. With \texttt{lw}/\texttt{sw} both could
+  read 5 and write 6: one increment is lost.
+  \item The longer the window, the more likely another write (or an interrupt)
+  makes \texttt{sc} fail, so the loop may retry many times.
+\end{enumerate}
+\end{noot}
+
+\begin{noot}{Exercise~\ref{q:isa-short}}
+\begin{enumerate}[label=(\alph*),leftmargin=*]
+  \item \texttt{SUBI} is \texttt{addi} with a negative constant; \texttt{NOT}
+  is \texttt{nor \$d,\$s,\$zero}; a left arithmetic shift produces the same bits
+  as \texttt{sll}. Leaving them out keeps the instruction set small.
+  \item \texttt{move} (\texttt{add \$d,\$s,\$zero}), clear a register,
+  compare with zero (\texttt{beq \$t0,\$zero,L}), negate
+  (\texttt{sub \$d,\$zero,\$s}), direct addressing (\texttt{lw \$t0,100(\$zero)}).
+  \item Regularity: the hardware can read \texttt{rs}/\texttt{rt} from the
+  register file while it decodes the opcode, so decode is simple and fast.
+  \item Only loads and stores touch memory, so every instruction uses each
+  stage the same way (one memory access at most, in a fixed stage) and has a
+  predictable length and timing.
+  \item Integer: data transfers (35\%) and conditional branches (34\%).
+  FP: arithmetic (48\%) and data transfers (36\%).
+  \item A read-modify-write in one instruction needs both a read and a write
+  in one memory operation, which breaks the load-store pipeline; the pair keeps
+  each instruction simple and still guarantees atomicity.
+  \item Business: BCD for exact decimal money values. DSP: fixed point or block
+  floating point.
+  \item It raises the instruction count $I$ and lowers the CPI (and allows a
+  shorter clock cycle $C$).
+\end{enumerate}
+\end{noot}
