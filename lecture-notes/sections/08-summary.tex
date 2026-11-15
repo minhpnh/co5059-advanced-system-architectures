@@ -1,0 +1,164 @@
+\section{Summary}
+\label{sec:summary}
+
+\begin{noot}{What to take away}
+\begin{itemize}[leftmargin=*]
+  \item Chip density still doubles about every two years, but clock speed has
+  stopped scaling (power, ILP and memory walls), so the number of cores grows
+  instead.
+  \item \textbf{Execution time} is the only reliable measure of performance.
+  Always keep concrete metrics and benchmarks in mind when comparing systems.
+  \item $T = I\times\CPI\times C$: the instruction set and compiler change $I$,
+  the organization changes $\CPI$, the technology changes $C$.
+  \item \textbf{Amdahl's Law}: speeding up a fraction of the work is limited by
+  the rest, so make the common case fast.
+  \item The ISA is the hardware/software interface. Modern ISAs are
+  load-store (register-register); RISC keeps instructions simple and regular so
+  that pipelining gives $\CPI\approx1$.
+  \item \textbf{Pipelining} overlaps instructions: it improves instruction
+  bandwidth, not the latency of one instruction. Hazards (structural, data,
+  control) stop it from reaching the ideal speedup.
+  \item \textbf{Caches} exploit temporal and spatial locality. Performance is
+  $\AMAT=\text{hit time}+\text{miss rate}\times\text{miss penalty}$; each of the six
+  basic optimizations attacks one term, usually at the cost of another.
+  \item \textbf{Virtual memory} is a fully associative, write-back cache of disk
+  pages managed by the OS; the TLB makes translation fast, page faults must be
+  extremely rare, and translation gives protection for free.
+  \item \textbf{Multiprocessors} replace ever-harder ILP with thread-level
+  parallelism; they need atomic primitives for synchronization, a consistency model,
+  and a coherence protocol (snooping MSI/MESI, or directories) for private caches.
+\end{itemize}
+\end{noot}
+
+\subsection{Key Formulas}
+
+\begin{center}
+\renewcommand{\arraystretch}{1.5}
+\begin{tabular}{@{}p{3.6cm}p{9.4cm}@{}}
+\toprule
+Name & Formula \\
+\midrule
+CPU equation &
+$T=I\times\CPI\times C$: instructions $\times$ cycles per instruction
+$\times$ seconds per cycle \\
+Speedup &
+$\displaystyle \text{Speedup}=\frac{\text{ExTime}_{old}}{\text{ExTime}_{new}}$ \\
+Amdahl's Law &
+$\displaystyle \text{Speedup}_{overall}=\frac{1}{(1-F)+F/S}$,
+with $F$ the fraction of \emph{time} enhanced and $S$ its speedup \\
+MIPS rating &
+$\displaystyle \text{MIPS}=\frac{\text{Clock rate}}{\CPI\times10^{6}}$ \\
+Pipeline speedup &
+$\displaystyle \frac{\text{Pipeline depth}}{1+\text{stall CPI}}\times
+\frac{C_{unpipelined}}{C_{pipelined}}$ (ideal CPI $=1$) \\
+Cache fields &
+sets $S=C/(B\cdot a)$; offset $\log_2B$, index $\log_2S$, tag the rest \\
+AMAT &
+$\text{HT}_{L1}+\text{MR}_{L1}(\text{HT}_{L2}+\text{MR}_{L2}\times\text{MP}_{L2})$;
+global $\text{MR}_{L2}=\text{MR}_{L1}\times\text{MR}_{L2,local}$ \\
+CPU time with stalls &
+$\text{IC}\times(\CPI_{exec}+\frac{\text{accesses}}{\text{instr}}\times\text{MR}\times\text{MP})\times C$ \\
+Translation &
+$\text{PA}=\text{PFN}\times P+(\text{VA}\bmod P)$; flat table
+$2^{\text{VPN bits}}\times$ PTE size \\
+TLB access time &
+$h(t+m)+(1-h)(t+2m)$ \\
+Parallel speedup &
+$\dfrac{1}{(1-f)+f/N}$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\subsection{Comparison Tables}
+
+\begin{center}
+\begin{tabular}{@{}lp{4.4cm}p{6.2cm}@{}}
+\toprule
+Hazard & Cause & Typical remedies \\
+\midrule
+Structural & Two instructions need the same hardware in one cycle &
+more hardware (separate instruction and data memory, extra ports), stalls \\
+Data & An instruction needs a result that is not yet written &
+forwarding, interlock stalls, compiler scheduling (fill the load delay slot) \\
+Control & A branch changes the PC before it is known &
+early branch resolution, predict not taken or taken, delayed branch, branch
+prediction \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\begin{center}
+\begin{tabular}{@{}lp{5cm}p{5.4cm}@{}}
+\toprule
+ISA style & Where operands live & Remark \\
+\midrule
+Stack & implicit top of stack & short code, no random access \\
+Accumulator & one implicit register & early machines \\
+Memory-memory & operands in memory & few instructions, slow and variable \\
+Register-memory & one operand in memory & x86 \\
+Register-register & only registers; loads and stores access memory &
+MIPS and all modern RISC; easy to pipeline \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\begin{center}
+\small
+\begin{tabular}{@{}lP{5.3cm}P{5.3cm}@{}}
+\toprule
+& Cache & Virtual memory \\
+\midrule
+Unit & block, 16--128 B & page, 4--64 KiB \\
+Placement & direct mapped / set associative & fully associative \\
+Identification & tag compare in the set & page table, TLB \\
+Replacement & hardware: random, LRU, FIFO, pseudo-LRU & OS: LRU approximations (Clock) \\
+Writes & write-through or write-back & always write-back \\
+Miss & cache miss: tens of cycles & page fault: millions of cycles \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\begin{center}
+\small
+\begin{tabular}{@{}lP{4.6cm}P{6.2cm}@{}}
+\toprule
+Technique & Exploits & Key idea \\
+\midrule
+Superpipelining & ILP & more, shorter stages; faster clock \\
+Superscalar & ILP & several instructions issued per cycle, hardware scheduling \\
+VLIW & ILP & compiler packs operations into one long instruction \\
+Fine/coarse multithreading & TLP & switch threads every cycle / on long stalls \\
+SMT & TLP and ILP & several threads issue in the same cycle \\
+Multiprocessor & TLP & several cores; coherence and synchronization \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\subsection{Concept Map}
+
+\begin{center}\begin{minipage}{\linewidth}\centering
+\begin{tikzpicture}[font=\small,
+  box/.style={concept,text width=3.3cm,minimum height=1cm}]
+  \node[box] (perf) at (0,0) {\textbf{Performance}\\execution time};
+  \node[box] (eq) at (5.2,0) {\textbf{CPU equation}\\$I\times\CPI\times C$};
+  \node[box] (isa) at (10.4,0) {\textbf{ISA and compiler}\\determine $I$};
+  \node[box] (amd) at (0,-2.4) {\textbf{Amdahl's Law}\\limits any speedup};
+  \node[box] (pipe) at (5.2,-2.4) {\textbf{Pipelining}\\lowers $\CPI$ toward 1};
+  \node[box] (haz) at (10.4,-2.4) {\textbf{Hazards}\\add stall cycles};
+  \node[box] (mp) at (0,-4.8) {\textbf{Multiprocessors}\\TLP, coherence, sync};
+  \node[box] (cache) at (5.2,-4.8) {\textbf{Cache}\\memory stalls add to $\CPI$};
+  \node[box] (vm) at (10.4,-4.8) {\textbf{Virtual memory}\\TLB, page faults};
+  \draw[diagram arrow] (eq) -- (perf);
+  \draw[diagram arrow] (isa) -- (eq);
+  \draw[diagram arrow] (pipe) -- (eq);
+  \draw[diagram arrow] (haz) -- (pipe);
+  \draw[diagram arrow] (amd) -- (perf);
+  \draw[diagram arrow] (isa) -- (pipe);
+  \draw[diagram arrow] (cache) -- (pipe);
+  \draw[diagram arrow] (vm) -- (cache);
+  \draw[diagram arrow] (mp) -- (amd);
+  \draw[diagram arrow] (cache) -- (mp);
+\end{tikzpicture}
+\diagramsource{own diagram (concept map of the summary); no source}
+\end{minipage}
+\end{center}

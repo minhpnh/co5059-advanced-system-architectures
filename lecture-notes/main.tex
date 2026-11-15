@@ -1,18 +1,23 @@
 % !TeX program = xelatex
 \documentclass[11pt]{article}
 \input{preamble}
+% Every \section starts on a new page (notes only; the review shares the
+% preamble but not this rule).
+\AddToHook{cmd/section/before}{\clearpage}
 
 \begin{document}
-\makecover{Lecture Notes}{\coursedescription}
-
+\makecover{Lecture Notes}
 
 % -----------------------------------------------------------------------------
-% Lectures
+% Sections (one per topic, in course order)
 % -----------------------------------------------------------------------------
-\input{lectures/lecture-01}
-\clearpage
-\input{lectures/lecture-02}
-\clearpage
-\input{lectures/lecture-03}
+\input{sections/01-introduction}
+\input{sections/02-instruction-set-architecture}
+\input{sections/03-pipelining}
+\input{sections/04-cache}
+\input{sections/05-virtual-memory}
+\input{sections/06-multiprocessors}
+\input{sections/07-practice-problems}
+\input{sections/08-summary}
 
 \end{document}
