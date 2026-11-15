@@ -1,0 +1,495 @@
+\section{Virtual Memory}
+\label{sec:vm}
+\sources{Lecture ``Virtual Memory'' (\nolinkurl{05-virtual-memory-lecture.pdf});
+Group~2 ``Virtual Memory'' (\nolinkurl{05-virtual-memory-group2.pdf}); H\&P 5th
+ed.\ App.~B (\S B.4--B.5) and \S2.4.}
+
+% =============================================================================
+\subsection{Why Virtual Memory}
+\label{sec:vm-why}
+
+Computers run many processes at once, each wanting a full address space, but
+they must share a smaller physical memory. Without virtual memory, programmers
+split large programs into \emph{overlays} by hand, programs could overwrite each
+other or the OS, free memory became scattered (fragmentation), and whole programs
+were loaded up front.\HPA[42]{B}{\S B.4}{40}
+
+\begin{definition}[Virtual memory]
+\textbf{Virtual memory} (VM) lets main memory act as a cache for secondary
+storage. The processor issues \textbf{virtual} (logical) addresses; hardware (the
+MMU) and the OS translate them to \textbf{physical} addresses in main memory or
+on disk (\emph{memory mapping}, \emph{address translation}). Each process sees a
+large, private address space.
+\end{definition}
+
+\paragraph{Benefits.}
+\begin{itemize}
+  \item \textbf{Larger space}: a program may be larger than physical memory; cold
+  pages live on disk (demand paging loads a page on its first access).
+  \item \textbf{Isolation and protection}: one page table per process, so the same
+  virtual address in two programs maps to different physical frames.
+  \item \textbf{Relocation}: a program runs anywhere in physical memory by changing
+  the mapping only.
+  \item \textbf{Sharing}: several page tables can map the same frame (shared code,
+  libraries).
+  \item \textbf{Non-contiguous placement}: consecutive virtual pages (e.g.\
+  \texttt{A[n]} and \texttt{A[n+1]} across a page boundary) need not be adjacent in
+  physical memory.
+\end{itemize}
+\textbf{Costs}: page tables use memory, translation adds latency (hidden by the
+TLB), page faults stall for millions of cycles, and the MMU and TLB cost hardware.
+
+\begin{remark}
+\slidefix{} Group~2 lists page-fault stalls as ``disk reads are 1000$\times$
+slower''. With a 100~ns memory and a 5--10~ms disk the ratio is about $10^5$, as
+their own AMAT example (10~ms vs.\ 100~ns) shows.
+\end{remark}
+
+\begin{center}\begin{minipage}{\linewidth}\centering
+\begin{tikzpicture}[font=\small,x=1cm,y=0.55cm]
+  \node[font=\small\bfseries] at (0.6,4.6) {Virtual};
+  \foreach \l/\y/\a in {A/3/0,B/2/4K,C/1/8K,D/0/12K} {
+    \draw (0,\y) rectangle ++(1.2,1) node[midway] {\l};
+    \node[anchor=east,font=\scriptsize] at (-0.1,\y+0.5) {\a};}
+  \node[font=\small\bfseries] at (4.6,4.6) {Physical};
+  \foreach \y/\a/\l in {3/0/,2/4K/C,1/8K/,0/12K/,-1/16K/A,-2/20K/,-3/24K/B,-4/28K/} {
+    \draw (4,\y) rectangle ++(1.2,1) node[midway] {\l};
+    \node[anchor=west,font=\scriptsize] at (5.3,\y+0.5) {\a};}
+  \draw[fill=black!10] (7,0) rectangle ++(1.4,1) node[midway] {D};
+  \node[font=\small\bfseries] at (7.7,4.6) {Disk};
+  \draw[-{Latex}] (1.2,3.5) -- (4,-0.5);
+  \draw[-{Latex}] (1.2,2.5) -- (4,-2.5);
+  \draw[-{Latex}] (1.2,1.5) -- (4,2.5);
+  \draw[-{Latex},dashed] (0.6,0) -- (0.6,-5) -- (7.7,-5) -- (7.7,0);
+  \node[font=\scriptsize\itshape,fill=white,inner sep=1pt] at (2.6,-5) {page on disk};
+\end{tikzpicture}
+\diagramsource{\nolinkurl{05-virtual-memory-lecture.pdf}, handout p.~3 (``Example of virtual memory''); cf.\ H\&P Fig.~B.19, \hppage{B}{41}}
+\end{minipage}
+\end{center}
+\noindent A program of four 4 KB pages: A, B, C are in memory (anywhere), D is on
+disk.\HPA{B}{\S B.4, Figure~B.19}{41}
+
+
+% =============================================================================
+\subsection{Paging Vocabulary}
+\label{sec:vm-terms}
+
+\begin{definition}[Pages and frames]
+A \textbf{(virtual) page} is a fixed-size block of virtual memory; a
+\textbf{(physical) frame} is a block of physical memory of the same size (typically
+4 KiB; 512 bytes to 16 MB). Any page fits in any frame. The \textbf{page table}
+(one per process, indexed by the virtual page number) maps pages to frames; each
+\textbf{page table entry} (PTE) holds the frame number and control bits.
+\end{definition}
+
+\begin{center}
+\small
+\begin{tabular}{@{}lP{10.6cm}@{}}
+\toprule
+Term & Meaning \\
+\midrule
+VPN & virtual page number: the upper bits of the virtual address \\
+PFN / PPN & physical frame (page) number \\
+PTE & page table entry: PFN, valid (present), protection (R/W/X, user/supervisor), dirty, reference bits \\
+MMU & memory management unit: hardware that translates every access and checks permissions \\
+TLB & translation lookaside buffer: a cache of recent translations \\
+ASID & address space identifier: tags TLB entries per process, avoiding flushes on a context switch \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\begin{center}
+\small
+\begin{tabular}{@{}lll@{}}
+\toprule
+Cache term & VM term & \\
+\midrule
+block (line) & page or segment & unit of transfer \\
+cache miss & page fault (address fault) & data not in the upper level \\
+hit time 1--2 cycles & 40--100 cycles & \\
+miss penalty 8--100 cycles & 700{,}000--6{,}000{,}000 cycles & \\
+miss rate 0.5--10\% & 0.00001--0.001\% & \\
+block 12--128 bytes & page 4096--65{,}536 bytes & \\
+size 0.016--1 MB & 4 MB--4 GB & \\
+\bottomrule
+\end{tabular}
+\end{center}
+Everything except the miss rate is much worse for VM. Further differences:
+cache replacement is done by hardware, page replacement by the OS (so it can
+afford to be smart); the processor address size sets the VM size, while the cache
+size is independent of it; disk also holds the file system.\HPA[43]{B}{\S B.4, Figure~B.20}{42}
+
+\begin{definition}[Fragmentation]
+\textbf{Internal}: fixed-size allocation wastes the unused end of the last page
+(on average half a page per region; about 1.5 pages per process with text, heap
+and stack). \textbf{External}: variable-size allocation leaves free memory split
+into holes too small to use, although their total is large enough. Paging has
+only internal fragmentation; segmentation has external
+fragmentation.\HPA{B}{\S B.4}{47}
+\end{definition}
+
+% =============================================================================
+\subsection{Address Translation and Page Tables}
+\label{sec:vm-translation}
+
+\begin{center}\begin{minipage}{\linewidth}\centering
+\begin{tikzpicture}[font=\small]
+  \node[draw,minimum width=4.4cm,minimum height=0.6cm] (vpn) {Virtual page number};
+  \node[draw,minimum width=3cm,minimum height=0.6cm,right=0pt of vpn] (off) {Page offset};
+  \node[draw,minimum width=2.6cm,minimum height=1.6cm,below=0.9cm of vpn,align=center] (pt) {Page table\\(V, prot., D, R,\\PFN)};
+  \node[draw,minimum width=4.4cm,minimum height=0.6cm,below=0.9cm of pt] (pfn) {Physical page number};
+  \node[draw,minimum width=3cm,minimum height=0.6cm,right=0pt of pfn] (off2) {Page offset};
+  \node[left=0.6cm of pt,align=center,font=\scriptsize] (ptbr) {page-table\\base register};
+  \draw[-{Latex}] (vpn) -- node[right,font=\scriptsize]{index} (pt);
+  \draw[-{Latex}] (ptbr) -- (pt);
+  \draw[-{Latex}] (pt) -- (pfn);
+  \draw[-{Latex}] (off.south) -- (off2.north);
+  \node[right=2pt of off,font=\scriptsize] {$\log_2$ page size bits};
+\end{tikzpicture}
+\diagramsource{\nolinkurl{05-virtual-memory-lecture.pdf}, handout p.~2 (``VM: Address Translation''); Group~2 slide 13 (``Page Mapping Translation Flow''); cf.\ H\&P Fig.~B.23, \hppage{B}{45}}
+\end{minipage}
+\end{center}
+
+\begin{prop}[Translation]
+With page size $P$:
+\[
+  \text{VPN}=\left\lfloor\frac{\text{VA}}{P}\right\rfloor,\qquad
+  \text{offset}=\text{VA}\bmod P,\qquad
+  \text{PA}=\text{PFN}\times P+\text{offset}.
+\]
+The offset is not translated; only the page number changes. For paging the offset
+is \emph{concatenated} to the frame number; for segmentation it is
+\emph{added} to the segment base.\HPA{B}{\S B.4, Figure~B.23}{44}
+\end{prop}
+
+\begin{eg}[Hex and decimal translation (Group 2)]
+32-bit VA, 4 KiB pages (12-bit offset $=$ the last 3 hex digits). VA
+\texttt{0x00403A7C}: VPN \texttt{0x00403}, offset \texttt{0xA7C}; the PTE gives PFN
+\texttt{0x1F2}, so PA $=$ \texttt{0x1F2A7C}.
+
+Page size 1024: VA 3500 has VPN $\lfloor3500/1024\rfloor=3$ and offset
+$3500-3072=428$; page 3 maps to frame 7, so PA $=7\times1024+428=7596$.
+\end{eg}
+
+\begin{prop}[Page table size]
+A flat table has one PTE per virtual page:
+size $=2^{\text{VA bits}-\log_2P}\times$ PTE size, per process. For a 32-bit VA,
+4 KB pages and 4-byte PTEs: $2^{20}\times4=4$ MB per process (400 MB for 100
+processes), mostly mapping nothing.\HPA{B}{\S B.4}{44}
+\end{prop}
+\begin{itemize}
+  \item \textbf{Multilevel page tables}: split the VPN; allocate second-level
+  tables only for used regions. 32-bit: $10+10+12$ (each level fits in a 4 KB page
+  of 1024 four-byte PTEs); x86-64: $9+9+9+9+12$ (48-bit VA, 256 TiB); a TLB miss
+  costs one memory access per level.
+  \item \textbf{Inverted page table}: one entry per physical frame, found by hashing
+  the VPN; its size follows physical memory. A 512 MB memory with 4 KB pages needs
+  only 1 MB (8 bytes per entry, including the virtual address) instead of 4 MB per
+  process.\HPA[45]{B}{\S B.4}{44}
+  \item On x86 the register CR3 holds the root of the active page table and is
+  switched on every context switch.
+\end{itemize}
+
+% =============================================================================
+\subsection{Page Faults}
+\label{sec:vm-faults}
+
+\begin{definition}[Page fault]
+A \textbf{page fault} is the exception raised when the PTE of an accessed page is
+not valid (the page is not in memory). It is the VM analogue of a cache miss, but
+handled in \emph{software}: the processor switches to another task during the
+disk access.\HPA{B}{\S B.1}{3}
+\end{definition}
+\begin{enumerate}
+  \item The MMU finds a missing or invalid mapping and traps to the OS.
+  \item The OS checks the access is legal; an illegal one is rejected (``segmentation
+  fault'').
+  \item It takes a free frame or chooses a victim; a \textbf{dirty} victim is written
+  back first.
+  \item It reads the page from disk (or zero-fills a new page).
+  \item It updates the PTE and restarts the faulting instruction.
+\end{enumerate}
+Pinned pages (the fault handler, DMA buffers) never page out. \textbf{Thrashing}:
+the working sets of the running processes exceed memory, so the system spends
+more time paging than executing; add memory or run fewer processes.
+
+\begin{prop}[Memory access time with page faults]
+With hit rate $h$, memory time $T_{mem}$ and disk (fault) time $T_{disk}$, the
+lecturer's slide writes $\AMAT=T_{mem}+(1-h)\,T_{disk}$; Group~2 writes
+$h\,T_{mem}+(1-h)\,T_{disk}$. They differ by $(1-h)\,T_{mem}$, negligible because
+$1-h$ is tiny.
+\end{prop}
+\begin{eg}[How bad is 99.9\%?]
+$T_{mem}=100$ ns, $T_{disk}=10$ ms $=10^7$ ns, $h=99.9\%$:
+$0.999\times100+0.001\times10^7\approx10{,}100$ ns, about $101\times$ slower than
+memory. With the lecturer's numbers ($T_{disk}=25$ ms) it is $25{,}100$ ns. The
+hit rate must be almost perfect.
+\end{eg}
+
+% =============================================================================
+\subsection{The Four Questions for Virtual Memory}
+\label{sec:vm-questions}
+
+\begin{itemize}
+  \item \textbf{Q1 Placement}: anywhere in main memory (\textbf{fully associative}):
+  the huge miss penalty makes a lower miss rate worth a complex placement.
+  \item \textbf{Q2 Identification}: the page table indexed by the VPN (or an inverted
+  table), sped up by the TLB.
+  \item \textbf{Q3 Replacement}: approximately \textbf{LRU}, by the OS. Hardware
+  provides a \emph{use} (reference) bit, set on access; the OS clears the bits
+  periodically to see which pages were used recently.
+  \item \textbf{Q4 Writes}: always \textbf{write-back} with a dirty bit; nobody
+  writes through to disk on every store.
+\end{itemize}
+\HPA[46]{B}{\S B.4}{44}
+
+\subsubsection{Page replacement algorithms}
+\label{sec:vm-replacement}
+\begin{center}
+\small
+\begin{tabular}{@{}lP{5.4cm}P{6.2cm}@{}}
+\toprule
+Policy & Evicts & Notes \\
+\midrule
+OPT (optimal) & the page next used furthest in the future & needs the future: a benchmark only \\
+FIFO & the page loaded earliest & simple; may evict a busy page; Belady's anomaly \\
+LRU & the page unused for the longest time & uses temporal locality; exact tracking is costly \\
+LFU & the least frequently used page & keeps once-popular stale pages \\
+Clock & first page with reference bit 0 (clearing 1s on the way) & cheap LRU approximation \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\begin{eg}[FIFO vs.\ LRU (Group 2)]
+References \texttt{7 0 1 2 0 3 0 4}, 3 frames. FIFO: 7, 0, 1 fault; 2 evicts 7; 0
+hits; 3 evicts 0 (though just used); 0 evicts 1; 4 evicts 2: \textbf{7 faults}. LRU:
+2 evicts 7; 0 hits; 3 evicts 1; 0 hits; 4 evicts 2: \textbf{6 faults}.
+\end{eg}
+
+\begin{eg}[A string where FIFO beats LRU (lecturer's review)]
+3 frames, \texttt{1 2 1 1 3 2 1 4 3 1 1 2 4 1 5 6 2 1}; F $=$ fault (victim).
+\begin{center}
+\scriptsize
+\setlength{\tabcolsep}{2.2pt}
+\begin{tabular}{@{}l*{18}{c}@{}}
+\toprule
+Ref & 1 & 2 & 1 & 1 & 3 & 2 & 1 & 4 & 3 & 1 & 1 & 2 & 4 & 1 & 5 & 6 & 2 & 1 \\
+\midrule
+FIFO & F & F & & & F & & & F(1) & & F(2) & & F(3) & & & F(4) & F(1) & & F(2) \\
+LRU & F & F & & & F & & & F(3) & F(2) & & & F(4) & F(3) & & F(2) & F(4) & F(1) & F(5) \\
+OPT & F & F & & & F & & & F(2) & & & & F(3) & & & F(4) & F(5) & & \\
+\bottomrule
+\end{tabular}
+\end{center}
+FIFO 9, LRU 11, OPT 7 faults. At reference 4 LRU evicts 3 (used longest ago) and
+needs it next; FIFO evicts 1 (loaded first). LRU is usually better, but not on every
+string.
+\end{eg}
+
+\begin{remark}
+\textbf{Belady's anomaly}: with FIFO, more frames can give \emph{more} faults:
+\texttt{1 2 3 4 1 2 5 1 2 3 4 5} gives 9 faults with 3 frames and 10 with 4. LRU
+and OPT are \emph{stack algorithms} (the pages kept with $n$ frames are always
+kept with $n+1$) and never show it.
+\end{remark}
+
+% =============================================================================
+\subsection{The TLB}
+\label{sec:tlb}
+
+\begin{definition}[Translation lookaside buffer]
+Page tables live in memory, so every access would need two memory accesses
+(PTE, then data). The \textbf{TLB} (translation buffer) caches recent
+translations: the tag holds part of the VPN, the data holds the PFN, protection,
+valid, use and dirty bits. Locality makes a small TLB effective.\HPA{B}{\S B.4}{46}
+\end{definition}
+\begin{itemize}
+  \item \textbf{TLB hit}: PA $=$ PFN $\Vert$ offset at once, no page-table access.
+  \item \textbf{TLB miss}: walk the page table (hardware or OS); if the page is
+  present, load the PTE into the TLB; if not, \textbf{page fault}. A TLB miss is
+  not a page fault.
+  \item \textbf{Opteron data TLB}: 40 entries, fully associative; the VA is sent to
+  all tags while the access type is checked against the protection bits; a 40:1
+  multiplexer selects the 28-bit PFN, joined to the 12-bit offset (40-bit PA).
+  \item On a context switch: flush the TLB, or tag entries with an ASID/PCID.
+  \item \textbf{TLB reach} $=$ entries $\times$ page size; large pages map more
+  memory with the same entries.\HPA{B}{\S B.4, Figure~B.24}{47}
+\end{itemize}
+
+\begin{prop}[Effective access time with a TLB]
+TLB time $t$, memory time $m$, TLB hit rate $h$, one-level page table:
+\[
+  \text{EAT}=h\,(t+m)+(1-h)\,(t+2m).
+\]
+A $k$-level table costs $t+(k+1)m$ on a miss.
+\end{prop}
+\begin{eg}[EAT (Group 2)]
+$t=20$, $m=100$ ns, $h=98\%$: $0.98\times120+0.02\times220=122$ ns, a 22\%
+overhead over 100 ns. With $t=10$, $m=80$, $h=95\%$:
+$0.95\times90+0.05\times170=94$ ns.
+\end{eg}
+
+\begin{center}
+\small
+\begin{tabular}{@{}lllp{6.2cm}@{}}
+\toprule
+TLB & Page table & Cache & Possible? \\
+\midrule
+hit & -- & hit or miss & yes (the page table is not accessed) \\
+miss & hit & hit or miss & yes \\
+miss & miss (fault) & miss & yes \\
+hit & miss & any & no: a page in the TLB is in memory \\
+miss & miss & hit & no: data cannot be cached if its page is not in memory \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\paragraph{Selecting a page size.} Larger pages: smaller page tables, larger
+VIPT caches, more efficient disk transfers, more memory mapped per TLB entry (fewer
+TLB misses), hence multiple page sizes in modern processors. Smaller pages: less
+internal fragmentation and faster process start-up.\HPA[47]{B}{\S B.4}{46}
+
+\subsubsection{From virtual address to cache}
+\label{sec:vm-cache}
+A \textbf{virtually indexed, physically tagged} (VIPT) L1 cache uses page-offset
+bits as its index, so the cache is read while the TLB translates; the physical tag
+is then compared. This needs index $+$ block offset $\le$ page offset, i.e.\
+$C/a\le$ page size; to grow the L1, raise the associativity.\HPA{B}{\S B.4, Figure~B.25}{48}
+\begin{eg}[A whole hierarchy]
+64-bit VA, 41-bit PA, 8 KB pages, direct-mapped 256-entry TLB, direct-mapped 8 KB
+L1 and 4 MB L2, 64-byte blocks.
+\begin{center}
+\small
+\begin{tabular}{@{}lr@{}}
+\toprule
+VA $=$ VPN $+$ page offset & $51+13$ \\
+VPN $=$ TLB tag $+$ TLB index & $43+8$ \\
+L1: index $+$ block offset $=$ page offset & $7+6=13$ \\
+L1 tag $=$ physical page number & $41-13=28$ \\
+L2: tag $+$ index $+$ block offset & $19+16+6=41$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+\end{eg}
+
+% =============================================================================
+\subsection{Segmentation}
+\label{sec:segmentation}
+
+\begin{definition}[Segmentation]
+Memory is divided into \textbf{variable-size segments} that follow the program's
+logical structure (code, data, heap, stack) and may be visible to the programmer.
+An address is (segment number, offset); the segment table holds each segment's
+\textbf{base}, \textbf{limit} and protection:
+\[
+  \text{if offset}<\text{limit}:\ \text{PA}=\text{base}+\text{offset};\qquad
+  \text{else trap.}
+\]
+\HPA[44]{B}{\S B.4, Figures~B.21--B.22}{43}
+\end{definition}
+
+\begin{eg}[Segment translation (Group 2)]
+Segment 2 (stack): base 4300, limit 400. (2, 53): $53<400$, PA $=4353$. (2, 500):
+$500\ge400$, trap, no address formed. Segment 1: base 6300, limit 400: (1, 399)
+$\to6699$; (1, 400) traps: valid offsets are $0,\dots,\text{limit}-1$.
+\end{eg}
+
+\begin{center}
+\small
+\begin{tabular}{@{}lP{5.8cm}P{5.8cm}@{}}
+\toprule
+& Paging & Segmentation \\
+\midrule
+Unit & fixed-size page & variable-size segment \\
+Words per address & one & two (segment, offset) \\
+Visible to programmer & no & may be \\
+Replacing a block & trivial (all the same size) & hard (find a contiguous free region) \\
+Fragmentation & internal & external (holes; needs compaction; first/best/worst fit) \\
+Disk traffic & efficient (tune the page size) & small segments may move few bytes \\
+Protection, sharing & fine-grained, per page & natural, per logical region \\
+\bottomrule
+\end{tabular}
+\end{center}
+\begin{itemize}
+  \item \textbf{Paged segments} (segmented paging): each segment is a whole number
+  of pages with its own page table. Replacement is easy, yet a segment is a logical
+  unit. Up to three memory reads uncached (segment table, page table, data);
+  Multics, IBM System/38.
+  \item Because of the replacement problem few computers use pure segmentation.
+  \item \textbf{x86}: real mode PA $=$ segment $\times16+$ offset (20 bits, 1 MiB,
+  no protection; \texttt{06EF:9234} $\to$ \texttt{0x10124}); protected mode
+  (80286) uses selectors into descriptor tables with base, limit and privilege
+  rings 0--3; from the 80386, paging under segmentation, and today's OSes use a
+  flat model.
+\end{itemize}
+
+% =============================================================================
+\subsection{Protection}
+\label{sec:protection}
+
+\begin{itemize}
+  \item \textbf{Isolation}: each process has its own address space and page table;
+  a process cannot reach memory it has no mapping for.
+  \item \textbf{Permissions}: R/W/X per page (code RX, data RW, constants R) or per
+  segment; writing read-only memory or executing data traps.
+  \item \textbf{Privilege}: user vs.\ kernel (supervisor) mode; U/S bit per page.
+\end{itemize}
+At a minimum the architecture must (1) provide at least \textbf{two modes},
+user and supervisor (kernel); (2) provide processor state a user process can use
+but not write (the mode bit, the exception enable bit, memory protection
+information); (3) provide ways to switch modes: a \emph{system call} to supervisor
+mode and a return that restores user mode; (4) limit memory accesses so a process
+need not be swapped to disk on a context switch.\HP{\S2.4}{106} Processes are
+protected by having their own page tables, which user programs cannot modify;
+protection can be extended with rings (80x86) or capabilities. The check happens
+during translation, in the TLB, on every access.\HPA{B}{\S B.5}{50}
+
+% =============================================================================
+\subsection{Worked Problems}
+\label{sec:vm-problems}
+
+\begin{eg}[Address split (Group 2)]
+16-bit addresses, 256-byte pages: offset $\log_2256=8$ bits, VPN $16-8=8$ bits, so
+$2^8=256$ virtual pages. 2 KiB pages, VA 5000, page 2 $\to$ frame 9: VPN
+$\lfloor5000/2048\rfloor=2$, offset $5000-4096=904$, PA $=9\times2048+904=19{,}336$.
+\end{eg}
+
+% =============================================================================
+\subsection{Textbook Exercises}
+\label{sec:vm-tbx}
+
+\begin{tbexercise}[B]{B.12}{64}{\S B.4 (TLB, page tables), \hppages{B}{44}{47}}
+A program runs on a computer with a four-entry fully associative TLB:
+\begin{center}
+\small
+\begin{tabular}{@{}ccc@{\qquad}ccc@{\qquad}ccc@{}}
+\toprule
+VP\# & PP\# & Valid & VP\# & PP\# & Valid & VP\# & PP\# & Valid \\
+\midrule
+5 & 30 & 1 & 7 & 1 & 0 & 10 & 10 & 1 \\
+15 & 25 & 1 & & & & & & \\
+\bottomrule
+\end{tabular}
+\end{center}
+Page table (virtual page: physical page, present): 0: 3 Y; 1: 7 N; 2: 6 N; 3: 5 Y;
+4: 14 Y; 5: 30 Y; 6: 26 Y; 7: 11 Y; 8: 13 N; 9: 18 N; 10: 10 Y; 11: 56 Y; 12: 110 Y;
+13: 33 Y; 14: 12 N; 15: 25 Y. For the virtual page trace 1, 5, 9, 14, 10, 6, 15,
+12, 7, 2, say for each access whether the TLB hits or misses and, if the page
+table is accessed, whether it is a page hit or a page fault.
+\end{tbexercise}
+
+\begin{tbexercise}[B]{B.13}{66}{\S B.4, \hppages{B}{46}{47}}
+Some systems handle TLB misses in software (as an exception), others in
+hardware. (a) What are the trade-offs? (b) Is software handling always slower?
+(c) Are there page-table structures easy in software but hard in hardware, or the
+reverse? (d) Why are TLB miss rates of floating-point programs generally higher
+than those of integer programs?
+\end{tbexercise}
+
+\begin{tbexercise}[B]{B.15}{66}{\S B.5, \hppages{B}{49}{56}}
+A scheme like HP/PA's stores a protection ID (key) in each PTE; on every access the
+CPU compares it with four protection-ID registers (writable only in supervisor
+mode) and checks the access rights. (a) How could a process hold more than four
+valid protection IDs at a time (say ten)? Propose a mechanism, perhaps with
+software help. (The book has further parts on the same scheme.)
+\end{tbexercise}
