@@ -8,7 +8,19 @@
 \RequirePackage{tcolorbox}
 \tcbuselibrary{breakable}
 
-\mdfsetup{skipabove=1em,skipbelow=0.5em}
+% Spacing: skipabove is dropped right after a heading (see the hook at
+% the end); split* pad a box continued on the
+% next page; inner* pad the content from the frame.
+\mdfsetup{
+  skipabove=0.9em,
+  skipbelow=0.5em,
+  innertopmargin=9pt,
+  innerbottommargin=9pt,
+  innerleftmargin=12pt,
+  innerrightmargin=12pt,
+  splittopskip=16pt,
+  splitbottomskip=8pt,
+}
 \theoremstyle{definition}
 
 % Green box: definitions.
@@ -124,18 +136,7 @@
   {\vspace{-10pt}\begin{tmpexplanation}}
   {\end{tmpexplanation}}
 
-% General-purpose tcolorbox notes.
-\newenvironment{verbetering}{%
-  \begin{tcolorbox}[
-    arc=0mm,
-    colback=white,
-    colframe=green!60!black,
-    title=Opmerking,
-    fonttitle=\sffamily,
-    breakable,
-  ]
-}{\end{tcolorbox}}
-
+% Method / tip block with its own title: \begin{noot}{Method: ...}
 \newenvironment{noot}[1]{%
   \begin{tcolorbox}[
     arc=0mm,
@@ -146,3 +147,12 @@
     breakable,
   ]
 }{\end{tcolorbox}}
+
+% Directly after a heading LaTeX suppresses the space above a box (skipabove
+% is dropped), so the box would sit on the heading. Add the gap there only.
+\makeatletter
+\newcommand{\boxgapafterheading}{\if@nobreak\vspace{8pt}\fi}
+\@for\mdf@env:={theorem,definition,proposition,prop,lemma,corollary,exercise,%
+example,eg,remark,note,solution,explanation,noot}\do{%
+  \AddToHook{env/\mdf@env/before}{\boxgapafterheading}}
+\makeatother
